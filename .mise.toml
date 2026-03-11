@@ -1,0 +1,27 @@
+[tools]
+go = "1.25"
+
+[tasks.dev]
+description = "Run dev server"
+run = "go run ./cmd/shelfprice"
+
+[tasks.build]
+description = "Compile binary to bin/"
+run = "go build -o bin/shelfprice ./cmd/shelfprice"
+
+[tasks.start]
+description = "Run compiled binary"
+run = "./bin/shelfprice"
+depends = ["build"]
+
+[tasks.migrate]
+description = "Run DB migrations and exit"
+run = "go run ./cmd/shelfprice -migrate-only"
+
+[tasks.lint]
+description = "Vet all packages"
+run = "go vet ./..."
+
+[tasks.test]
+description = "Run all tests"
+run = "go test ./..."

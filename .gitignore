@@ -1,0 +1,20 @@
+# Binary output
+bin/
+
+# Database files
+data/
+*.db
+
+# Environment secrets
+.env
+
+# Go build artifacts
+*.exe
+*.test
+*.out
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
