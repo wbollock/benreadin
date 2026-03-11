@@ -59,6 +59,7 @@
     if (activeFilter === 'available') return status === 'available';
     if (activeFilter === 'wait') return status === 'wait';
     if (activeFilter === 'not_found') return status === 'not_found' || status === 'unavailable';
+    if (activeFilter === 'kindle') return (event.library_results || []).some(lr => lr.has_kindle);
     if (activeFilter === 'gutenberg') return !!event.gutenberg_result;
     return true;
   }
@@ -76,6 +77,20 @@
           const sb = order[bestStatus(b.library_results)] ?? 3;
           if (sa !== sb) return sa - sb;
           return minWait(a.library_results) - minWait(b.library_results);
+        });
+        break;
+      }
+      case 'kindle_first': {
+        // Books where any library has Kindle delivery come first, then available, then rest.
+        const statusOrder = { available: 0, wait: 1, unavailable: 2, not_found: 3 };
+        copy.sort((a, b) => {
+          const aK = (a.library_results || []).some(lr => lr.has_kindle) ? 0 : 1;
+          const bK = (b.library_results || []).some(lr => lr.has_kindle) ? 0 : 1;
+          if (aK !== bK) return aK - bK;
+          // Within same Kindle group, sort available-first
+          const sa = statusOrder[bestStatus(a.library_results)] ?? 3;
+          const sb = statusOrder[bestStatus(b.library_results)] ?? 3;
+          return sa - sb;
         });
         break;
       }

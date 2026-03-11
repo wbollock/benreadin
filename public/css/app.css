@@ -636,10 +636,23 @@ input::placeholder { color: var(--text-subtle); }
   font-weight: 500;
   margin-top: 2px;
 }
+.book-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -4px;
+}
 .book-pages {
-  font-size: .75rem;
+  display: inline-flex;
+  align-items: center;
+  font-size: .72rem;
+  font-weight: 600;
   color: var(--text-subtle);
-  font-weight: 400;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 100px;
+  padding: 1px 8px;
+  white-space: nowrap;
 }
 
 /* Ratings */
@@ -834,6 +847,14 @@ input::placeholder { color: var(--text-subtle); }
 }
 .filter-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
 .filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.filter-chip-kindle { border-color: #fbbf24; color: #92400e; }
+.filter-chip-kindle:hover { border-color: #d97706; color: #92400e; background: #fef3c7; }
+.filter-chip-kindle.active { background: #d97706; border-color: #d97706; color: #fff; }
+
+[data-theme="dark"] .filter-chip-kindle { border-color: #78350f; color: #fbbf24; }
+[data-theme="dark"] .filter-chip-kindle:hover { background: #2c1f06; }
+[data-theme="dark"] .filter-chip-kindle.active { background: #b45309; border-color: #b45309; color: #fff; }
 
 .filter-chip-gutenberg { border-color: #6ee7b7; color: #059669; }
 .filter-chip-gutenberg:hover { border-color: #059669; color: #059669; background: #d1fae5; }

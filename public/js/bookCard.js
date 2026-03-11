@@ -132,7 +132,7 @@ function buildBookCard(event, show) {
     : '';
 
   const pageCount = book.page_count
-    ? `<span class="book-pages">${book.page_count} pp</span>`
+    ? `<span class="book-pages">📖 ${book.page_count} pages</span>`
     : '';
 
   const avgRating = book.average_rating
@@ -159,7 +159,8 @@ function buildBookCard(event, show) {
             <div class="book-title">${escHtml(book.title)}</div>
             ${ratingStr}
           </div>
-          <div class="book-author">${escHtml(book.author)}${pageCount ? ` · ${pageCount}` : ''}</div>
+          <div class="book-author">${escHtml(book.author)}</div>
+          ${pageCount ? `<div class="book-meta">${pageCount}</div>` : ''}
           ${description}
         </div>
         ${libRows ? `<div class="library-list">${libRows}</div>` : ''}
