@@ -144,84 +144,124 @@
     return;
   }
 
-  const sseParams = new URLSearchParams();
-  sseParams.set('url', shelfUrl);
-  libraries.forEach(l => sseParams.append('libraries', l));
+  const baseParams = new URLSearchParams();
+  baseParams.set('url', shelfUrl);
+  libraries.forEach(l => baseParams.append('libraries', l));
 
-  setProgress(5, 'Connecting...');
+  let activeES = null;
 
-  const es = new EventSource('/api/search?' + sseParams.toString());
+  function resetState() {
+    allBooks.length = 0;
+    totalBooks = 0;
+    completedBooks = 0;
+    bookGrid.innerHTML = '';
+    errorBanner.classList.remove('visible');
+    resultsHeader.style.display = 'none';
+    recsPanel.style.display = 'none';
+    recsGrid.innerHTML = '';
+    document.getElementById('status-area').style.opacity = '1';
+    const copyBtn = document.getElementById('copy-link-btn');
+    if (copyBtn) copyBtn.style.display = 'none';
+  }
 
-  es.addEventListener('progress', e => {
-    const data = JSON.parse(e.data);
-    if (data.total) totalBooks = data.total;
-    if (data.completed !== undefined) completedBooks = data.completed;
+  function startStream(refresh) {
+    if (activeES) activeES.close();
+    resetState();
+    setProgress(5, 'Connecting...');
 
-    if (totalBooks > 0 && completedBooks > 0) {
-      const pct = 5 + (completedBooks / totalBooks) * 90;
-      setProgress(pct, `Checking book ${completedBooks} of ${totalBooks}...`);
-    } else if (data.message) {
-      setProgress(10, data.message);
-    }
-  });
+    const p = new URLSearchParams(baseParams);
+    if (refresh) p.set('refresh', 'true');
+    const es = activeES = new EventSource('/api/search?' + p.toString());
 
-  es.addEventListener('book', e => {
-    const event = JSON.parse(e.data);
-    allBooks.push(event);
-    // Always append incrementally during streaming — no full re-render per book.
-    // Sort order is applied once when the stream ends.
-    if (filterBook(event)) {
-      bookGrid.insertAdjacentHTML('beforeend', buildBookCard(event, true));
-    }
-    const visibleCount = bookGrid.querySelectorAll('.book-card').length;
-    updateCount(visibleCount < allBooks.length ? visibleCount : undefined);
-    resultsHeader.style.display = 'block';
-  });
+    es.addEventListener('progress', e => {
+      const data = JSON.parse(e.data);
+      if (data.total) totalBooks = data.total;
+      if (data.completed !== undefined) completedBooks = data.completed;
 
-  es.addEventListener('done', e => {
-    const data = JSON.parse(e.data);
-    setProgress(100, data.message || 'Done');
-    es.close();
-    // One final render to apply sort order and correct counts.
-    renderGrid();
-    setTimeout(() => {
-      document.getElementById('status-area').style.opacity = '0.4';
-    }, 2000);
-    // Create a shortlink for easy sharing/bookmarking.
-    createShortlink();
-  });
+      if (totalBooks > 0 && completedBooks > 0) {
+        const pct = 5 + (completedBooks / totalBooks) * 90;
+        setProgress(pct, `Checking book ${completedBooks} of ${totalBooks}...`);
+      } else if (data.message) {
+        setProgress(10, data.message);
+      }
+    });
 
-  es.addEventListener('recommendations', e => {
-    const recs = JSON.parse(e.data);
-    if (!recs || recs.length === 0) return;
+    es.addEventListener('book', e => {
+      const event = JSON.parse(e.data);
+      allBooks.push(event);
+      // Always append incrementally during streaming — no full re-render per book.
+      // Sort order is applied once when the stream ends.
+      if (filterBook(event)) {
+        bookGrid.insertAdjacentHTML('beforeend', buildBookCard(event, true));
+      }
+      const visibleCount = bookGrid.querySelectorAll('.book-card').length;
+      updateCount(visibleCount < allBooks.length ? visibleCount : undefined);
+      resultsHeader.style.display = 'block';
+    });
 
-    recsGrid.innerHTML = recs.map(rec => {
-      const cover = rec.cover_url
-        ? `<img src="${escHtml(rec.cover_url)}" alt="${escHtml(rec.title)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'rec-cover-placeholder\\'>📚</div>'">`
-        : `<div class="rec-cover-placeholder">📚</div>`;
+    es.addEventListener('done', e => {
+      const data = JSON.parse(e.data);
+      setProgress(100, data.message || 'Done');
+      es.close();
+      // One final render to apply sort order and correct counts.
+      renderGrid();
+      setTimeout(() => {
+        document.getElementById('status-area').style.opacity = '0.4';
+      }, 2000);
+      // Create a shortlink for easy sharing/bookmarking.
+      createShortlink();
+    });
 
-      const libBadges = (rec.library_results || [])
-        .filter(lr => lr.status === 'available')
-        .map(lr => `<span class="badge badge-available" title="${escHtml(lr.library_key)}">&#10003; ${escHtml(lr.library_key)}</span>`)
-        .join('');
+    es.addEventListener('recommendations', e => {
+      const recs = JSON.parse(e.data);
+      if (!recs || recs.length === 0) return;
 
-      const because = rec.because_of_title
-        ? `<div class="rec-because">Similar to <em>${escHtml(rec.because_of_title)}</em></div>`
-        : '';
+      recsGrid.innerHTML = recs.map(rec => {
+        const cover = rec.cover_url
+          ? `<img src="${escHtml(rec.cover_url)}" alt="${escHtml(rec.title)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'rec-cover-placeholder\\'>📚</div>'">`
+          : `<div class="rec-cover-placeholder">📚</div>`;
 
-      return `
-        <div class="rec-card">
-          <div class="rec-cover">${cover}</div>
-          <div class="rec-info">
-            <div class="rec-title">${escHtml(rec.title)}</div>
-            <div class="rec-author">${escHtml(rec.author)}</div>
-            ${because}
-            <div class="rec-badges">${libBadges}</div>
-          </div>
-        </div>`;
-    }).join('');
+        const libBadges = (rec.library_results || [])
+          .filter(lr => lr.status === 'available')
+          .map(lr => `<span class="badge badge-available" title="${escHtml(lr.library_key)}">&#10003; ${escHtml(lr.library_key)}</span>`)
+          .join('');
 
-    recsPanel.style.display = 'block';
+        const because = rec.because_of_title
+          ? `<div class="rec-because">Similar to <em>${escHtml(rec.because_of_title)}</em></div>`
+          : '';
+
+        return `
+          <div class="rec-card">
+            <div class="rec-cover">${cover}</div>
+            <div class="rec-info">
+              <div class="rec-title">${escHtml(rec.title)}</div>
+              <div class="rec-author">${escHtml(rec.author)}</div>
+              ${because}
+              <div class="rec-badges">${libBadges}</div>
+            </div>
+          </div>`;
+      }).join('');
+
+      recsPanel.style.display = 'block';
+    });
+
+    es.addEventListener('error', e => {
+      try {
+        const data = JSON.parse(e.data);
+        showError(data.message || 'An error occurred.');
+      } catch { /* connection-level error */ }
+      es.close();
+    });
+
+    es.onerror = () => {
+      if (es.readyState === EventSource.CLOSED) return;
+      showError('Connection lost. Please try again.');
+      es.close();
+    };
+  }
+
+  document.getElementById('refresh-btn').addEventListener('click', () => {
+    startStream(true);
   });
 
   recsToggle.addEventListener('click', () => {
@@ -231,19 +271,7 @@
     recsGrid.style.display = expanded ? 'none' : '';
   });
 
-  es.addEventListener('error', e => {
-    try {
-      const data = JSON.parse(e.data);
-      showError(data.message || 'An error occurred.');
-    } catch { /* connection-level error */ }
-    es.close();
-  });
-
-  es.onerror = () => {
-    if (es.readyState === EventSource.CLOSED) return;
-    showError('Connection lost. Please try again.');
-    es.close();
-  };
+  startStream(false);
 
   // ---- Shortlink ----
 

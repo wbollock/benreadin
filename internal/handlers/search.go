@@ -164,6 +164,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 
 	libsKey := librariesCacheKey(libraries)
+	hardRefresh := r.URL.Query().Get("refresh") == "true"
 
 	for _, book := range books {
 		book := book
@@ -171,8 +172,8 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		go func() {
 			defer wg.Done()
 
-			// Check the per-book result cache first.
-			if book.GoodreadsID != "" {
+			// Check the per-book result cache first (skipped on hard refresh).
+			if !hardRefresh && book.GoodreadsID != "" {
 				var cached BookEvent
 				if hit, _ := h.cache.GetBook(book.GoodreadsID, libsKey, &cached); hit {
 					slog.Debug("book cache hit", "book", book.Title)
