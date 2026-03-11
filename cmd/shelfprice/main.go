@@ -34,7 +34,7 @@ func main() {
 	})))
 
 	// Open database
-	database, err := db.Open(cfg.dbPath, cfg.libraryTTL, cfg.amazonTTL)
+	database, err := db.Open(cfg.dbPath, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL)
 	if err != nil {
 		slog.Error("failed to open database", "err", err)
 		os.Exit(1)
@@ -49,7 +49,7 @@ func main() {
 	}
 
 	// Wire up services
-	cache := services.NewCacheService(database, cfg.libraryTTL, cfg.amazonTTL)
+	cache := services.NewCacheService(database, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL)
 
 	goodreadsSvc := services.NewGoodreadsService()
 	overdriveSvc := services.NewOverDriveService(cache)
@@ -76,6 +76,7 @@ func main() {
 		openLibrarySvc,
 		amazonSvc,
 		recommendationSvc,
+		cache,
 		cfg.odConcurrency,
 		cfg.azConcurrency,
 	)
@@ -143,6 +144,7 @@ type config struct {
 	dbPath            string
 	libraryTTL        int64
 	amazonTTL         int64
+	bookTTL           int64
 	odConcurrency     int64
 	azConcurrency     int64
 	amazonAccessKey   string
@@ -157,6 +159,7 @@ func loadConfig() config {
 		dbPath:            envOrDefault("DB_PATH", "./data/cache.db"),
 		libraryTTL:        envInt64("CACHE_TTL_LIBRARY_SECONDS", 7200),
 		amazonTTL:         envInt64("CACHE_TTL_AMAZON_SECONDS", 86400),
+		bookTTL:           envInt64("CACHE_TTL_BOOK_SECONDS", 7200),
 		odConcurrency:     envInt64("CONCURRENCY_OVERDRIVE", 5),
 		azConcurrency:     envInt64("CONCURRENCY_AMAZON", 3),
 		amazonAccessKey:   os.Getenv("AMAZON_ACCESS_KEY"),

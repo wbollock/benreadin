@@ -28,6 +28,16 @@ CREATE TABLE IF NOT EXISTS shelf_cache (
   fetched_at  INTEGER NOT NULL
 );
 
+-- Per-book result cache: full BookEvent keyed by goodreads_id + sorted libraries (TTL 2h default)
+CREATE TABLE IF NOT EXISTS book_cache (
+  id           INTEGER PRIMARY KEY,
+  goodreads_id TEXT NOT NULL,
+  libraries    TEXT NOT NULL,  -- sorted comma-separated library keys
+  event_json   TEXT NOT NULL,
+  fetched_at   INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_book_cache ON book_cache(goodreads_id, libraries);
+
 -- Shortlinks: shareable tokens that encode a search URL + library set
 CREATE TABLE IF NOT EXISTS shortlinks (
   id         INTEGER PRIMARY KEY,

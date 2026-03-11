@@ -18,7 +18,7 @@ const ShelfCacheTTL int64 = 300
 
 // Open opens (or creates) the SQLite database at path, runs migrations, and
 // purges stale cache rows older than the given TTLs.
-func Open(path string, libraryTTL, amazonTTL int64) (*sql.DB, error) {
+func Open(path string, libraryTTL, amazonTTL, bookTTL int64) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create db dir: %w", err)
 	}
@@ -32,7 +32,7 @@ func Open(path string, libraryTTL, amazonTTL int64) (*sql.DB, error) {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
-	if err := purgeStale(db, libraryTTL, amazonTTL); err != nil {
+	if err := purgeStale(db, libraryTTL, amazonTTL, bookTTL); err != nil {
 		return nil, fmt.Errorf("purge stale: %w", err)
 	}
 
@@ -44,7 +44,7 @@ func migrate(db *sql.DB) error {
 	return err
 }
 
-func purgeStale(db *sql.DB, libraryTTL, amazonTTL int64) error {
+func purgeStale(db *sql.DB, libraryTTL, amazonTTL, bookTTL int64) error {
 	_, err := db.Exec(
 		`DELETE FROM library_cache WHERE fetched_at <= (unixepoch() - ?)`,
 		libraryTTL,
@@ -62,6 +62,13 @@ func purgeStale(db *sql.DB, libraryTTL, amazonTTL int64) error {
 	_, err = db.Exec(
 		`DELETE FROM shelf_cache WHERE fetched_at <= (unixepoch() - ?)`,
 		ShelfCacheTTL,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(
+		`DELETE FROM book_cache WHERE fetched_at <= (unixepoch() - ?)`,
+		bookTTL,
 	)
 	return err
 }

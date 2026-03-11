@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/wbollock/shelfprice/internal/models"
@@ -39,6 +41,7 @@ type SearchHandler struct {
 	openLibrary     *services.OpenLibraryService
 	amazon          *services.AmazonService
 	recommendations *services.RecommendationService
+	cache           *services.CacheService
 	odSem           *semaphore.Weighted
 	azSem           *semaphore.Weighted
 }
@@ -49,6 +52,7 @@ func NewSearchHandler(
 	ol *services.OpenLibraryService,
 	az *services.AmazonService,
 	recs *services.RecommendationService,
+	cache *services.CacheService,
 	odConcurrency, azConcurrency int64,
 ) *SearchHandler {
 	return &SearchHandler{
@@ -57,9 +61,18 @@ func NewSearchHandler(
 		openLibrary:     ol,
 		amazon:          az,
 		recommendations: recs,
+		cache:           cache,
 		odSem:           semaphore.NewWeighted(odConcurrency),
 		azSem:           semaphore.NewWeighted(azConcurrency),
 	}
+}
+
+// librariesCacheKey returns a stable, sorted cache key for a library set.
+func librariesCacheKey(libraries []string) string {
+	sorted := make([]string, len(libraries))
+	copy(sorted, libraries)
+	sort.Strings(sorted)
+	return strings.Join(sorted, ",")
 }
 
 func (h *SearchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -150,13 +163,31 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	resultCh := make(chan result, len(books))
 	var wg sync.WaitGroup
 
+	libsKey := librariesCacheKey(libraries)
+
 	for _, book := range books {
 		book := book
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			// Enrich this book (concurrent, semaphore-limited inside OpenLibraryService)
+			// Check the per-book result cache first.
+			if book.GoodreadsID != "" {
+				var cached BookEvent
+				if hit, _ := h.cache.GetBook(book.GoodreadsID, libsKey, &cached); hit {
+					slog.Debug("book cache hit", "book", book.Title)
+					resultCh <- result{
+						book:           cached.Book,
+						libraryResults: cached.LibraryResults,
+						amazonResult:   cached.AmazonResult,
+					}
+					return
+				}
+			}
+
+			// Cache miss — run the full pipeline.
+
+			// Enrich this book (Open Library ISBN13 + cover)
 			enriched := h.openLibrary.Enrich(ctx, []models.Book{book})
 			book = enriched[0]
 
@@ -194,11 +225,24 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			resultCh <- result{
+			res := result{
 				book:           book,
 				libraryResults: libResults,
 				amazonResult:   azResult,
 			}
+
+			// Store to book cache for future searches.
+			if book.GoodreadsID != "" {
+				if err := h.cache.SetBook(book.GoodreadsID, libsKey, BookEvent{
+					Book:           res.book,
+					LibraryResults: res.libraryResults,
+					AmazonResult:   res.amazonResult,
+				}); err != nil {
+					slog.Warn("book cache set failed", "book", book.Title, "err", err)
+				}
+			}
+
+			resultCh <- res
 		}()
 	}
 
