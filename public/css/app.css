@@ -22,8 +22,6 @@
   --red-bg:      #fee2e2;
   --gray:        #6b7280;
   --gray-bg:     #f3f4f6;
-
-  color-scheme: light dark;
 }
 
 /* Dark mode — applied when system prefers dark OR user toggled it */
@@ -842,6 +840,9 @@ input::placeholder { color: var(--text-subtle); }
   border-color: var(--accent);
   color: #fff;
 }
+.filter-chip-gutenberg { border-color: #a5d6a7; color: #2e7d32; }
+.filter-chip-gutenberg:hover { border-color: #2e7d32; color: #2e7d32; }
+.filter-chip-gutenberg.active { background: #2e7d32; border-color: #2e7d32; color: #fff; }
 .filter-select {
   padding: 5px 10px;
   border: 1.5px solid var(--border);

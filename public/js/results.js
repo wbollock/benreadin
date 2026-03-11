@@ -59,6 +59,7 @@
     if (activeFilter === 'available') return status === 'available';
     if (activeFilter === 'wait') return status === 'wait';
     if (activeFilter === 'not_found') return status === 'not_found' || status === 'unavailable';
+    if (activeFilter === 'gutenberg') return !!event.gutenberg_result;
     return true;
   }
 
