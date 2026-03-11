@@ -218,6 +218,19 @@ input::placeholder { color: var(--text-subtle); }
   align-items: center;
 }
 .chip-remove:hover { opacity: 1; }
+.chip-edit {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  padding: 0;
+  line-height: 1;
+  font-size: .85rem;
+  opacity: .55;
+  display: flex;
+  align-items: center;
+}
+.chip-edit:hover { opacity: 1; }
 .chip-input {
   border: none;
   outline: none;
@@ -521,6 +534,69 @@ input::placeholder { color: var(--text-subtle); }
   text-transform: uppercase;
   min-width: 56px;
   flex-shrink: 0;
+}
+.lib-label {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 56px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+  transition: color var(--transition), border-color var(--transition);
+}
+.lib-label:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ---- Rename modal ---- */
+.rename-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.rename-modal-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.5);
+  padding: 24px;
+  width: min(360px, 90vw);
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rename-modal-title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text);
+}
+.rename-modal-input {
+  width: 100%;
+  padding: 9px 12px;
+  font-family: var(--font);
+  font-size: .9375rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.rename-modal-input:focus { outline: none; border-color: var(--accent); }
+.rename-modal-hint {
+  font-size: .75rem;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+}
+.rename-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 .badge {
   display: inline-flex;

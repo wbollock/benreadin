@@ -15,6 +15,20 @@
   let acIndex = -1;
   let debounceTimer = null;
 
+  // ---- Aliases (localStorage) ----
+  function loadAliases() {
+    try { return JSON.parse(localStorage.getItem('shelfprice_lib_aliases') || '{}'); } catch { return {}; }
+  }
+  function saveAlias(key, alias) {
+    const aliases = loadAliases();
+    if (alias) aliases[key] = alias; else delete aliases[key];
+    localStorage.setItem('shelfprice_lib_aliases', JSON.stringify(aliases));
+  }
+  function displayName(key, name) {
+    const aliases = loadAliases();
+    return aliases[key] || name || key;
+  }
+
   // ---- Library chip management ----
 
   function addLibrary(key, name) {
@@ -35,13 +49,25 @@
     syncHidden();
   }
 
+  function renameLibrary(key) {
+    const aliases = loadAliases();
+    const lib = libraries.find(l => l.key === key);
+    const current = aliases[key] || lib?.name || key;
+    showRenameModal(key, current, alias => {
+      saveAlias(key, alias);
+      renderChips();
+    });
+  }
+
   function renderChips() {
-    // Remove existing chips (keep the input)
     Array.from(chipWrap.querySelectorAll('.chip')).forEach(el => el.remove());
     libraries.forEach(lib => {
       const chip = document.createElement('div');
       chip.className = 'chip';
-      chip.innerHTML = `${escHtml(lib.name)} <button class="chip-remove" data-key="${escHtml(lib.key)}" title="Remove">&times;</button>`;
+      chip.innerHTML =
+        `<span class="chip-label">${escHtml(displayName(lib.key, lib.name))}</span>` +
+        `<button class="chip-edit" data-key="${escHtml(lib.key)}" title="Rename">&#9998;</button>` +
+        `<button class="chip-remove" data-key="${escHtml(lib.key)}" title="Remove">&times;</button>`;
       chipWrap.insertBefore(chip, chipInput);
     });
   }
@@ -53,10 +79,60 @@
   chipWrap.addEventListener('click', e => {
     if (e.target.classList.contains('chip-remove')) {
       removeLibrary(e.target.dataset.key);
+    } else if (e.target.classList.contains('chip-edit')) {
+      renameLibrary(e.target.dataset.key);
     } else {
       chipInput.focus();
     }
   });
+
+  // ---- Rename modal ----
+  let renameCallback = null;
+
+  function showRenameModal(key, current, cb) {
+    renameCallback = cb;
+    let modal = document.getElementById('rename-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'rename-modal';
+      modal.className = 'rename-modal';
+      modal.innerHTML = `
+        <div class="rename-modal-box">
+          <div class="rename-modal-title">Rename library</div>
+          <input class="rename-modal-input" id="rename-input" type="text" placeholder="Display name">
+          <div class="rename-modal-hint" id="rename-hint"></div>
+          <div class="rename-modal-actions">
+            <button class="btn-secondary" id="rename-cancel">Cancel</button>
+            <button class="btn-primary" id="rename-save">Save</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      document.getElementById('rename-cancel').addEventListener('click', closeRenameModal);
+      document.getElementById('rename-save').addEventListener('click', commitRename);
+      document.getElementById('rename-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') commitRename();
+        if (e.key === 'Escape') closeRenameModal();
+      });
+      modal.addEventListener('click', e => { if (e.target === modal) closeRenameModal(); });
+    }
+    document.getElementById('rename-hint').textContent = `Key: ${key}`;
+    const input = document.getElementById('rename-input');
+    input.value = current;
+    modal.style.display = 'flex';
+    setTimeout(() => { input.select(); }, 50);
+  }
+
+  function closeRenameModal() {
+    const modal = document.getElementById('rename-modal');
+    if (modal) modal.style.display = 'none';
+    renameCallback = null;
+  }
+
+  function commitRename() {
+    const val = document.getElementById('rename-input').value.trim();
+    if (renameCallback) renameCallback(val || null);
+    closeRenameModal();
+  }
 
   // ---- Autocomplete ----
 
@@ -159,9 +235,14 @@
     if (!url) { showError('Please enter a Goodreads or OverReader shelf URL.'); return; }
     if (libraries.length === 0) { showError('Add at least one library to check.'); return; }
 
+    const aliases = loadAliases();
     const params = new URLSearchParams();
     params.set('url', url);
-    libraries.forEach(l => params.append('libraries', l.key));
+    libraries.forEach(l => {
+      params.append('libraries', l.key);
+      // Pass display name so results page can show it without a DB lookup.
+      params.append('library_name', l.key + ':' + (aliases[l.key] || l.name || l.key));
+    });
 
     window.location.href = '/results.html?' + params.toString();
   });

@@ -30,15 +30,19 @@ function buildBookCard(event, show) {
   const { book, library_results, amazon_result, gutenberg_result } = event;
 
   // Library rows — badge links to OverDrive page where Kindle delivery is available
-  const libRows = (library_results || []).map(lr => `
+  const libRows = (library_results || []).map(lr => {
+    const displayName = (typeof window.getLibName === 'function')
+      ? window.getLibName(lr.library_key)
+      : (lr.library_name || lr.library_key);
+    return `
     <div class="library-row">
-      <span class="library-key">${escHtml(lr.library_key)}</span>
+      <span class="lib-label" data-libkey="${escHtml(lr.library_key)}" title="Click to rename">${escHtml(displayName)}</span>
       ${lr.overdrive_url
         ? `<a href="${escHtml(lr.overdrive_url)}" target="_blank" rel="noopener" style="text-decoration:none" title="${lr.status === 'available' ? 'Borrow on Libby — Kindle delivery available' : 'View on OverDrive'}">${availabilityBadge(lr)}</a>`
         : availabilityBadge(lr)
       }
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   // Price pills + action buttons
   let pricePills = '';

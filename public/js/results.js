@@ -139,6 +139,27 @@
   const shelfUrl  = params.get('url');
   const libraries = params.getAll('libraries');
 
+  // Build key→name map from URL params (set by search page).
+  const urlLibNames = {};
+  params.getAll('library_name').forEach(s => {
+    const sep = s.indexOf(':');
+    if (sep > 0) urlLibNames[s.slice(0, sep)] = s.slice(sep + 1);
+  });
+
+  // Aliases override URL names; URL names override raw keys.
+  function loadAliases() {
+    try { return JSON.parse(localStorage.getItem('shelfprice_lib_aliases') || '{}'); } catch { return {}; }
+  }
+  function saveAlias(key, alias) {
+    const aliases = loadAliases();
+    if (alias) aliases[key] = alias; else delete aliases[key];
+    localStorage.setItem('shelfprice_lib_aliases', JSON.stringify(aliases));
+  }
+  window.getLibName = key => {
+    const aliases = loadAliases();
+    return aliases[key] || urlLibNames[key] || key;
+  };
+
   if (!shelfUrl) {
     showError('No URL provided. Go back and enter a shelf URL.');
     return;
@@ -262,6 +283,53 @@
 
   document.getElementById('refresh-btn').addEventListener('click', () => {
     startStream(true);
+  });
+
+  // ---- Library rename (click any .lib-label in results) ----
+
+  let renameCallback = null;
+
+  function showRenameModal(key, cb) {
+    renameCallback = cb;
+    const modal = document.getElementById('rename-modal');
+    const input = document.getElementById('rename-input');
+    document.getElementById('rename-hint').textContent = `Key: ${key}`;
+    input.value = window.getLibName(key);
+    modal.style.display = 'flex';
+    setTimeout(() => { input.select(); }, 50);
+  }
+  function closeRenameModal() {
+    document.getElementById('rename-modal').style.display = 'none';
+    renameCallback = null;
+  }
+  function commitRename() {
+    const val = document.getElementById('rename-input').value.trim();
+    if (renameCallback) renameCallback(val || null);
+    closeRenameModal();
+  }
+
+  document.getElementById('rename-cancel').addEventListener('click', closeRenameModal);
+  document.getElementById('rename-save').addEventListener('click', commitRename);
+  document.getElementById('rename-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') commitRename();
+    if (e.key === 'Escape') closeRenameModal();
+  });
+  document.getElementById('rename-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('rename-modal')) closeRenameModal();
+  });
+
+  // Event delegation — clicking a lib label opens rename.
+  bookGrid.addEventListener('click', e => {
+    const label = e.target.closest('.lib-label');
+    if (!label) return;
+    const key = label.dataset.libkey;
+    showRenameModal(key, alias => {
+      saveAlias(key, alias);
+      // Update all matching labels on the page without a full re-render.
+      document.querySelectorAll(`.lib-label[data-libkey="${CSS.escape(key)}"]`).forEach(el => {
+        el.textContent = window.getLibName(key);
+      });
+    });
   });
 
   recsToggle.addEventListener('click', () => {
