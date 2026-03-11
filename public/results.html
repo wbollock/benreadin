@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShelfPrice — Results</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="site-logo">
+        <div class="logo-icon">S</div>
+        <a href="/">ShelfPrice</a>
+      </div>
+      <a href="/" class="btn-secondary" style="margin-left:auto">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path d="M19 12H5M12 5l-7 7 7 7"/>
+        </svg>
+        New search
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <div class="container" style="padding-top: 32px;">
+
+      <!-- Status / progress -->
+      <div id="status-area" class="results-status">
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" id="progress-bar"></div>
+        </div>
+        <div class="progress-label" id="progress-label">Starting search...</div>
+      </div>
+
+      <div id="error-banner" class="error-banner" role="alert"></div>
+
+      <!-- Results header + filter/sort bar (hidden until books arrive) -->
+      <div id="results-header" style="display:none;">
+        <div class="results-header">
+          <h2>Results <span class="results-count" id="results-count"></span></h2>
+        </div>
+        <div class="filter-bar">
+          <!-- Availability filter -->
+          <div class="filter-group">
+            <span class="filter-label">Show</span>
+            <div class="filter-chips" id="filter-availability">
+              <button class="filter-chip active" data-filter="all">All</button>
+              <button class="filter-chip" data-filter="available">Available now</button>
+              <button class="filter-chip" data-filter="wait">On hold</button>
+              <button class="filter-chip" data-filter="not_found">Not on Libby</button>
+            </div>
+          </div>
+          <!-- Sort -->
+          <div class="filter-group" style="margin-left:auto">
+            <span class="filter-label">Sort</span>
+            <select class="filter-select" id="sort-select">
+              <option value="default">Shelf order</option>
+              <option value="available_first">Available first</option>
+              <option value="wait_asc">Shortest wait</option>
+              <option value="title_asc">Title A→Z</option>
+              <option value="title_desc">Title Z→A</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Book grid -->
+      <div class="book-grid" id="book-grid"></div>
+
+      <!-- Recommendations panel (hidden until populated) -->
+      <div id="recs-panel" class="recs-panel" style="display:none;">
+        <div class="recs-header">
+          <h2 class="recs-title">Available on Libby — You Might Also Like</h2>
+          <p class="recs-subtitle">Books similar to your shelf that are available to borrow right now.</p>
+          <button class="recs-toggle" id="recs-toggle" aria-expanded="true">Hide</button>
+        </div>
+        <div class="recs-grid" id="recs-grid"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      ShelfPrice is not affiliated with Goodreads, Libby, or OverDrive.
+      Book availability data is live from OverDrive.
+    </div>
+  </footer>
+
+  <script src="/js/bookCard.js"></script>
+  <script src="/js/results.js"></script>
+</body>
+</html>
