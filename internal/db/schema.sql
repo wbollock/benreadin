@@ -27,3 +27,12 @@ CREATE TABLE IF NOT EXISTS shelf_cache (
   events_json TEXT NOT NULL,
   fetched_at  INTEGER NOT NULL
 );
+
+-- Shortlinks: shareable tokens that encode a search URL + library set
+CREATE TABLE IF NOT EXISTS shortlinks (
+  id         INTEGER PRIMARY KEY,
+  token      TEXT NOT NULL UNIQUE,
+  url        TEXT NOT NULL,
+  libraries  TEXT NOT NULL,  -- comma-separated library keys
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);

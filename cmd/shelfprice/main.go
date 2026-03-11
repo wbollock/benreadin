@@ -80,6 +80,7 @@ func main() {
 		cfg.azConcurrency,
 	)
 	librariesHandler := handlers.NewLibrariesHandler(database)
+	shortenHandler := handlers.NewShortenHandler(database)
 
 	// Router
 	r := chi.NewRouter()
@@ -90,6 +91,10 @@ func main() {
 	// API routes
 	r.Get("/api/search", searchHandler.ServeHTTP)
 	r.Get("/api/libraries", librariesHandler.ServeHTTP)
+	r.Post("/api/shorten", shortenHandler.Create)
+
+	// Shortlink redirects
+	r.Get("/s/{token}", shortenHandler.Redirect)
 
 	// Health check
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
