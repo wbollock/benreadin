@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShelfPrice — Check your Goodreads shelf on Libby</title>
+  <meta name="description" content="Paste your Goodreads shelf URL to check Libby/OverDrive availability and Amazon prices across multiple libraries.">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="site-logo">
+        <div class="logo-icon">S</div>
+        <a href="/">ShelfPrice</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <h1>Find your <span>to-read</span> books<br>on Libby</h1>
+        <p>Paste your Goodreads shelf URL and ShelfPrice checks every book for Libby availability across your libraries — with Amazon prices too.</p>
+
+        <div class="search-card">
+          <div id="error-banner" class="error-banner" role="alert"></div>
+
+          <form id="search-form" novalidate>
+            <div class="form-group">
+              <label for="shelf-url">
+                Goodreads shelf URL
+                <span class="label-hint">or OverReader URL</span>
+              </label>
+              <input
+                type="url"
+                id="shelf-url"
+                name="url"
+                placeholder="https://www.goodreads.com/review/list/12345?shelf=to-read"
+                autocomplete="off"
+                spellcheck="false"
+                required
+              >
+            </div>
+
+            <div class="form-group">
+              <label>Libraries <span class="label-hint">type to search, add up to 15</span></label>
+              <div class="library-input-wrap">
+                <div class="library-chips" id="library-chips" tabindex="0">
+                  <input
+                    type="text"
+                    class="chip-input"
+                    id="library-input"
+                    placeholder="e.g. mcplmd, lapl, sfpl..."
+                    autocomplete="off"
+                  >
+                </div>
+                <div class="autocomplete-list" id="autocomplete-list"></div>
+              </div>
+              <input type="hidden" id="libraries-hidden" name="libraries">
+            </div>
+
+            <button type="submit" class="btn-primary" id="search-btn">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+              Search Shelf
+            </button>
+          </form>
+        </div>
+
+        <p style="margin-top:16px; font-size:.8rem; color:var(--text-subtle)">
+          Tip: paste an OverReader URL directly and libraries are filled in automatically.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      ShelfPrice is not affiliated with Goodreads, Libby, or OverDrive.
+      Book availability data is live from OverDrive.
+    </div>
+  </footer>
+
+  <script src="/js/search.js"></script>
+</body>
+</html>
