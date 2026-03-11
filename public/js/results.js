@@ -18,7 +18,9 @@
   let totalBooks    = 0;
   let completedBooks = 0;
   let activeFilter  = 'all';
-  let activeSort    = 'default';
+  // Persist sort preference in localStorage; default to available_first.
+  const SORT_KEY = 'shelfprice_sort';
+  let activeSort = localStorage.getItem(SORT_KEY) || 'available_first';
 
   // ---- Utilities ----
 
@@ -130,6 +132,7 @@
 
   sortSelect.addEventListener('change', () => {
     activeSort = sortSelect.value;
+    localStorage.setItem(SORT_KEY, activeSort);
     renderGrid();
   });
 
@@ -168,6 +171,9 @@
   const baseParams = new URLSearchParams();
   baseParams.set('url', shelfUrl);
   libraries.forEach(l => baseParams.append('libraries', l));
+
+  // Sync the select element to the persisted sort value.
+  sortSelect.value = activeSort;
 
   let activeES = null;
 
