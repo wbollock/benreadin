@@ -157,6 +157,25 @@ func truncate(s string, maxRunes int) string {
 	return strings.TrimRight(string(runes[:cut]), " ") + "…"
 }
 
+// extractReview pulls out the user's review text from a Goodreads RSS
+// <description> CDATA block.  The block looks like:
+//
+//	author: X<br/>name: Y<br/>... review: USER TEXT HERE<br/><div>...</div>
+//
+// We grab only the text that follows "review: ".  If the user wrote nothing,
+// we return an empty string so no description is shown on the card.
+func extractReview(rawHTML string) string {
+	// Text after the literal "review: " (stripped of any HTML)
+	stripped := stripHTML(rawHTML)
+	if idx := strings.Index(stripped, "review: "); idx >= 0 {
+		after := strings.TrimSpace(stripped[idx+8:])
+		if len(after) > 5 {
+			return after
+		}
+	}
+	return ""
+}
+
 func itemToBook(item grItem) models.Book {
 	b := models.Book{
 		Author: strings.TrimSpace(item.AuthorName),
@@ -164,7 +183,7 @@ func itemToBook(item grItem) models.Book {
 		Title:  strings.TrimSpace(item.Title),
 	}
 
-	if raw := stripHTML(item.Description); raw != "" {
+	if raw := extractReview(item.Description); raw != "" {
 		b.Description = truncate(raw, 300)
 	}
 

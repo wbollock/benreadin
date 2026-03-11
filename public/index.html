@@ -7,6 +7,16 @@
   <meta name="description" content="Paste your Goodreads shelf URL to check Libby/OverDrive availability and Amazon prices across multiple libraries.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
   <link rel="stylesheet" href="/css/app.css">
+  <script>
+    (function(){
+      var t = localStorage.getItem('shelfprice_theme');
+      if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.dataset.theme = 'dark';
+      } else if (t === 'light') {
+        document.documentElement.dataset.theme = 'light';
+      }
+    })();
+  </script>
 </head>
 <body>
 
@@ -15,6 +25,9 @@
       <div class="site-logo">
         <div class="logo-icon">S</div>
         <a href="/">ShelfPrice</a>
+      </div>
+      <div style="margin-left:auto;">
+        <button id="theme-toggle" class="btn-theme" title="Toggle dark/light mode">🌙</button>
       </div>
     </div>
   </header>
@@ -85,6 +98,7 @@
     </div>
   </footer>
 
+  <script src="/js/theme.js"></script>
   <script src="/js/search.js"></script>
 </body>
 </html>

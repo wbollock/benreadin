@@ -39,11 +39,14 @@ type thunderResponse struct {
 		OwnedCopies     int    `json:"ownedCopies"`
 		HoldsCount      int    `json:"holdsCount"`
 		EstimatedWait   int    `json:"estimatedWaitDays"`
-		Covers          struct {
+		Covers  struct {
 			Book struct {
 				Href string `json:"href"`
 			} `json:"book"`
 		} `json:"covers"`
+		Formats []struct {
+			ID string `json:"id"` // e.g. "ebook-kindle", "ebook-overdrive", "ebook-epub-adobe"
+		} `json:"formats"`
 	} `json:"items"`
 }
 
@@ -117,6 +120,14 @@ func (s *OverDriveService) CheckAvailability(ctx context.Context, book models.Bo
 			result.Status = models.StatusWait
 		default:
 			result.Status = models.StatusUnavailable
+		}
+
+		// Detect Kindle delivery format.
+		for _, f := range item.Formats {
+			if f.ID == "ebook-kindle" {
+				result.HasKindle = true
+				break
+			}
 		}
 	}
 

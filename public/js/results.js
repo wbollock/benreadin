@@ -65,6 +65,9 @@
   function sortedBooks() {
     const copy = allBooks.slice();
     switch (activeSort) {
+      case 'default_desc':
+        copy.reverse();
+        break;
       case 'available_first': {
         const order = { available: 0, wait: 1, unavailable: 2, not_found: 3 };
         copy.sort((a, b) => {
@@ -75,6 +78,15 @@
         });
         break;
       }
+      case 'unavailable_first': {
+        const order = { available: 0, wait: 1, unavailable: 2, not_found: 3 };
+        copy.sort((a, b) => {
+          const sa = order[bestStatus(a.library_results)] ?? 3;
+          const sb = order[bestStatus(b.library_results)] ?? 3;
+          return sb - sa;
+        });
+        break;
+      }
       case 'wait_asc':
         copy.sort((a, b) => {
           const wa = bestStatus(a.library_results) === 'available' ? -Infinity : minWait(a.library_results);
@@ -82,11 +94,24 @@
           return wa - wb;
         });
         break;
+      case 'wait_desc':
+        copy.sort((a, b) => {
+          const wa = minWait(a.library_results);
+          const wb = minWait(b.library_results);
+          return wb - wa;
+        });
+        break;
       case 'rating_desc':
         copy.sort((a, b) => (b.book.average_rating || 0) - (a.book.average_rating || 0));
         break;
+      case 'rating_asc':
+        copy.sort((a, b) => (a.book.average_rating || 0) - (b.book.average_rating || 0));
+        break;
       case 'user_rating_desc':
         copy.sort((a, b) => (b.book.user_rating || 0) - (a.book.user_rating || 0));
+        break;
+      case 'user_rating_asc':
+        copy.sort((a, b) => (a.book.user_rating || 0) - (b.book.user_rating || 0));
         break;
       case 'title_asc':
         copy.sort((a, b) => a.book.title.localeCompare(b.book.title));
@@ -221,10 +246,27 @@
     es.addEventListener('book', e => {
       const event = JSON.parse(e.data);
       allBooks.push(event);
-      // Always append incrementally during streaming — no full re-render per book.
-      // Sort order is applied once when the stream ends.
+      // Append incrementally during streaming.
+      // For available_first sort, insert available books before non-available ones
+      // so the live order roughly matches the final sorted order.
       if (filterBook(event)) {
-        bookGrid.insertAdjacentHTML('beforeend', buildBookCard(event, true));
+        const status = bestStatus(event.library_results);
+        const html = buildBookCard(event, true);
+        if (activeSort === 'available_first' && status !== 'available') {
+          // Non-available: always append at the end.
+          bookGrid.insertAdjacentHTML('beforeend', html);
+        } else if (activeSort === 'available_first' && status === 'available') {
+          // Available: insert before the first non-available card so available
+          // books cluster at the top during streaming.
+          const firstNonAvail = bookGrid.querySelector('.book-card[data-status="wait"], .book-card[data-status="unavailable"], .book-card[data-status="not_found"]');
+          if (firstNonAvail) {
+            firstNonAvail.insertAdjacentHTML('beforebegin', html);
+          } else {
+            bookGrid.insertAdjacentHTML('beforeend', html);
+          }
+        } else {
+          bookGrid.insertAdjacentHTML('beforeend', html);
+        }
       }
       const visibleCount = bookGrid.querySelectorAll('.book-card').length;
       updateCount(visibleCount < allBooks.length ? visibleCount : undefined);
@@ -235,8 +277,10 @@
       const data = JSON.parse(e.data);
       setProgress(100, data.message || 'Done');
       es.close();
-      // One final render to apply sort order and correct counts.
+      // One final render to apply exact sort order and correct counts.
       renderGrid();
+      // Scroll to top so user sees the sorted results from the beginning.
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       setTimeout(() => {
         document.getElementById('status-area').style.opacity = '0.4';
       }, 2000);

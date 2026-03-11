@@ -14,11 +14,12 @@ function formatPrice(n) {
 }
 
 function availabilityBadge(result) {
+  const kindle = result.has_kindle ? ' <span class="badge-kindle-pill" title="Kindle delivery available">⚡K</span>' : '';
   switch (result.status) {
     case 'available':
-      return `<span class="badge badge-available">&#10003; Available${result.available_copies > 0 ? ` (${result.available_copies})` : ''}</span>`;
+      return `<span class="badge badge-available">&#10003; Available${result.available_copies > 0 ? ` (${result.available_copies})` : ''}${kindle}</span>`;
     case 'wait':
-      return `<span class="badge badge-wait">&#8987; ${result.estimated_wait_days > 0 ? result.estimated_wait_days + '-day wait' : 'On hold'}</span>`;
+      return `<span class="badge badge-wait">&#8987; ${result.estimated_wait_days > 0 ? result.estimated_wait_days + '-day wait' : 'On hold'}${kindle}</span>`;
     case 'unavailable':
       return `<span class="badge badge-unavail">&#10005; Not in catalog</span>`;
     default:
@@ -119,7 +120,7 @@ function buildBookCard(event, show) {
     : `<div class="book-cover-placeholder">📚</div>`;
 
   const description = book.description
-    ? `<p class="book-description">${escHtml(book.description)}</p>`
+    ? `<details class="book-description-details"><summary>About this book</summary><p class="book-description">${escHtml(book.description)}</p></details>`
     : '';
 
   const avgRating = book.average_rating
@@ -132,8 +133,13 @@ function buildBookCard(event, show) {
     ? `<div class="book-rating-row">${avgRating}${userRating}</div>`
     : '';
 
+  // Determine best status for data-status attribute (used for live sort insertion).
+  const statuses = (library_results || []).map(lr => lr.status);
+  const statusPriority = { available: 0, wait: 1, unavailable: 2, not_found: 3 };
+  const bestSt = statuses.reduce((best, s) => (statusPriority[s] ?? 3) < (statusPriority[best] ?? 3) ? s : best, statuses[0] || 'not_found');
+
   return `
-    <article class="book-card${show === false ? ' hidden' : ''}">
+    <article class="book-card${show === false ? ' hidden' : ''}" data-status="${escHtml(bestSt)}">
       <div class="book-cover">${cover}</div>
       <div class="book-info">
         <div>

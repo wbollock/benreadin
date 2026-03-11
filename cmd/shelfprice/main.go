@@ -118,11 +118,14 @@ func main() {
 
 	addr := ":" + cfg.port
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 120 * time.Second, // long for SSE streams
-		IdleTimeout:  60 * time.Second,
+		Addr:        addr,
+		Handler:     r,
+		ReadTimeout: 15 * time.Second,
+		// WriteTimeout intentionally 0 — SSE streams are long-lived and the
+		// timeout would cancel the context mid-stream.  Per-request timeouts
+		// are handled by the client disconnecting.
+		WriteTimeout: 0,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	// Graceful shutdown

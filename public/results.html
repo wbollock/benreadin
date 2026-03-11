@@ -6,6 +6,16 @@
   <title>ShelfPrice — Results</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
   <link rel="stylesheet" href="/css/app.css">
+  <script>
+    (function(){
+      var t = localStorage.getItem('shelfprice_theme');
+      if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.dataset.theme = 'dark';
+      } else if (t === 'light') {
+        document.documentElement.dataset.theme = 'light';
+      }
+    })();
+  </script>
 </head>
 <body>
 
@@ -16,6 +26,7 @@
         <a href="/">ShelfPrice</a>
       </div>
       <div style="display:flex;gap:8px;margin-left:auto;align-items:center;">
+        <button id="theme-toggle" class="btn-theme" title="Toggle dark/light mode">🌙</button>
         <button id="copy-link-btn" class="btn-copy-link" style="display:none;" title="Copy shareable link to this search">
           Copy link
         </button>
@@ -66,10 +77,15 @@
             <span class="filter-label">Sort</span>
             <select class="filter-select" id="sort-select">
               <option value="default">Shelf order</option>
+              <option value="default_desc">Shelf order (reversed)</option>
               <option value="available_first">Available first</option>
+              <option value="unavailable_first">Unavailable first</option>
               <option value="wait_asc">Shortest wait</option>
+              <option value="wait_desc">Longest wait</option>
               <option value="rating_desc">Highest rated (avg)</option>
-              <option value="user_rating_desc">My rating</option>
+              <option value="rating_asc">Lowest rated (avg)</option>
+              <option value="user_rating_desc">My rating (high→low)</option>
+              <option value="user_rating_asc">My rating (low→high)</option>
               <option value="title_asc">Title A→Z</option>
               <option value="title_desc">Title Z→A</option>
             </select>
@@ -113,6 +129,7 @@
     </div>
   </div>
 
+  <script src="/js/theme.js"></script>
   <script src="/js/bookCard.js"></script>
   <script src="/js/results.js"></script>
 </body>

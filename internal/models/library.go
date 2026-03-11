@@ -20,6 +20,7 @@ type LibraryResult struct {
 	HoldsCount      int                `json:"holds_count"`
 	EstimatedWait   int                `json:"estimated_wait_days"`
 	OverDriveURL    string             `json:"overdrive_url,omitempty"`
+	HasKindle       bool               `json:"has_kindle,omitempty"` // true if the Libby/OverDrive title includes a Kindle delivery format
 }
 
 // Library is a row from the libraries directory table.
