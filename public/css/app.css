@@ -636,6 +636,11 @@ input::placeholder { color: var(--text-subtle); }
   font-weight: 500;
   margin-top: 2px;
 }
+.book-pages {
+  font-size: .75rem;
+  color: var(--text-subtle);
+  font-weight: 400;
+}
 
 /* Ratings */
 .book-rating-row {

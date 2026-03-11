@@ -114,6 +114,12 @@
       case 'user_rating_asc':
         copy.sort((a, b) => (a.book.user_rating || 0) - (b.book.user_rating || 0));
         break;
+      case 'pages_asc':
+        copy.sort((a, b) => (a.book.page_count || 99999) - (b.book.page_count || 99999));
+        break;
+      case 'pages_desc':
+        copy.sort((a, b) => (b.book.page_count || 0) - (a.book.page_count || 0));
+        break;
       case 'title_asc':
         copy.sort((a, b) => a.book.title.localeCompare(b.book.title));
         break;

@@ -11,6 +11,7 @@ type Book struct {
 	Description   string  `json:"description"`
 	AverageRating float64 `json:"average_rating,omitempty"`
 	UserRating    int     `json:"user_rating,omitempty"`
+	PageCount     int     `json:"page_count,omitempty"`
 }
 
 // BestISBN returns ISBN13 if available, falling back to ISBN10.

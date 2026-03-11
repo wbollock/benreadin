@@ -131,6 +131,10 @@ function buildBookCard(event, show) {
     ? `<details class="book-description-details"><summary>About this book</summary><p class="book-description">${escHtml(book.description)}</p></details>`
     : '';
 
+  const pageCount = book.page_count
+    ? `<span class="book-pages">${book.page_count} pp</span>`
+    : '';
+
   const avgRating = book.average_rating
     ? `<span class="rating-avg" title="Goodreads average rating">★ ${book.average_rating.toFixed(2)}</span>`
     : '';
@@ -155,7 +159,7 @@ function buildBookCard(event, show) {
             <div class="book-title">${escHtml(book.title)}</div>
             ${ratingStr}
           </div>
-          <div class="book-author">${escHtml(book.author)}</div>
+          <div class="book-author">${escHtml(book.author)}${pageCount ? ` · ${pageCount}` : ''}</div>
           ${description}
         </div>
         ${libRows ? `<div class="library-list">${libRows}</div>` : ''}

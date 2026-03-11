@@ -38,14 +38,16 @@ func NewOpenLibraryService() *OpenLibraryService {
 }
 
 type olISBNResponse struct {
-	ISBN13 []string `json:"isbn_13"`
-	ISBN10 []string `json:"isbn_10"`
-	Covers []int    `json:"covers"`
+	ISBN13        []string `json:"isbn_13"`
+	ISBN10        []string `json:"isbn_10"`
+	Covers        []int    `json:"covers"`
+	NumberOfPages int      `json:"number_of_pages"`
 }
 
 type olSearchResponse struct {
 	Docs []struct {
-		ISBN []string `json:"isbn"`
+		ISBN                []string `json:"isbn"`
+		NumberOfPagesMedian int      `json:"number_of_pages_median"`
 	} `json:"docs"`
 }
 
@@ -130,6 +132,9 @@ func (s *OpenLibraryService) lookupByISBN(ctx context.Context, b *models.Book, i
 	if len(ol.ISBN13) > 0 && b.ISBN13 == "" {
 		b.ISBN13 = ol.ISBN13[0]
 	}
+	if ol.NumberOfPages > 0 && b.PageCount == 0 {
+		b.PageCount = ol.NumberOfPages
+	}
 
 	// Build cover URL from ISBN if we have one
 	if b.CoverURL == "" || strings.Contains(b.CoverURL, "nophoto") {
@@ -153,7 +158,7 @@ func (s *OpenLibraryService) lookupBySearch(ctx context.Context, b *models.Book)
 	q.Set("title", b.Title)
 	q.Set("author", b.Author)
 	q.Set("limit", "1")
-	q.Set("fields", "isbn")
+	q.Set("fields", "isbn,number_of_pages_median")
 	req.URL.RawQuery = q.Encode()
 	req.Header.Set("User-Agent", "shelfprice/1.0 (+https://github.com/wbollock/shelfprice)")
 
@@ -179,6 +184,9 @@ func (s *OpenLibraryService) lookupBySearch(ctx context.Context, b *models.Book)
 		if len(isbn) == 10 && b.ISBN10 == "" {
 			b.ISBN10 = isbn
 		}
+	}
+	if ol.Docs[0].NumberOfPagesMedian > 0 && b.PageCount == 0 {
+		b.PageCount = ol.Docs[0].NumberOfPagesMedian
 	}
 
 	if b.CoverURL == "" && b.ISBN13 != "" {
