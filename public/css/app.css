@@ -421,10 +421,33 @@ input::placeholder { color: var(--text-subtle); }
 }
 
 /* Rating display */
-.book-rating {
+.book-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.book-rating-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.rating-avg {
   font-size: .8rem;
-  color: var(--text-muted);
-  margin: 2px 0 4px;
+  font-weight: 700;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 100px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.rating-user {
+  font-size: .8rem;
+  color: #b45309;
+  letter-spacing: .5px;
+  white-space: nowrap;
 }
 
 /* ---- Progress Bar ---- */

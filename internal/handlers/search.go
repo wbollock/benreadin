@@ -263,8 +263,12 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		close(resultCh)
 	}()
 
-	// Collect enriched books for the recommendations pass.
-	enrichedBooks := make([]models.Book, 0, len(books))
+	// Start recommendations concurrently using the original (pre-enrichment) book list.
+	// We use a separate goroutine so recs run while book events are still streaming.
+	recsCh := make(chan []models.Recommendation, 1)
+	go func() {
+		recsCh <- h.recommendations.FindRecommendations(ctx, books, libraries)
+	}()
 
 	completed := 0
 	for res := range resultCh {
@@ -272,7 +276,6 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		completed++
-		enrichedBooks = append(enrichedBooks, res.book)
 		sendEvent("book", BookEvent{
 			Book:            res.book,
 			LibraryResults:  res.libraryResults,
@@ -285,10 +288,8 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Find recommendations before sending done so the client connection is still open.
-	sendEvent("progress", ProgressEvent{Message: "Finding recommendations..."})
-	recs := h.recommendations.FindRecommendations(ctx, enrichedBooks, libraries)
-	if len(recs) > 0 {
+	// Wait for recommendations (they've been running in parallel; usually done by now).
+	if recs := <-recsCh; len(recs) > 0 {
 		sendEvent("recommendations", recs)
 	}
 

@@ -82,16 +82,22 @@ function buildBookCard(event, show) {
   }
 
   // Kindle buttons
+  const isbn = book.isbn13 || book.isbn10;
+  const kindleSearchQ = isbn ? isbn : (book.title + ' ' + book.author);
+  const kindleSearchUrl = `https://www.amazon.com/s?k=${encodeURIComponent(kindleSearchQ)}&i=digital-text`;
+
   if (amazon_result?.available && amazon_result.kindle_asin) {
     const kindleUrl = `https://www.amazon.com/dp/${escHtml(amazon_result.kindle_asin)}?tag=${encodeURIComponent(affiliateTag)}`;
     kindleBtns += `<a href="${kindleUrl}" target="_blank" rel="noopener" class="btn-kindle">Buy for Kindle</a>`;
-    kindleBtns += `<a href="${kindleUrl}#sampleButton" target="_blank" rel="noopener" class="btn-secondary btn-sm">Send Sample ↗</a>`;
+    kindleBtns += `<a href="${kindleUrl}#sampleButton" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="Opens Amazon — click 'Send sample' to push a preview to your Kindle">Send Preview ↗</a>`;
   } else {
-    // No Amazon creds — fall back to an Amazon Kindle search by ISBN or title
-    const isbn = book.isbn13 || book.isbn10;
-    const q = isbn ? isbn : (book.title + ' ' + book.author);
-    const kindleSearchUrl = `https://www.amazon.com/s?k=${encodeURIComponent(q)}&i=digital-text`;
     kindleBtns += `<a href="${kindleSearchUrl}" target="_blank" rel="noopener" class="btn-kindle">Find on Kindle ↗</a>`;
+  }
+
+  // Always show a "Send Preview" fallback if we don't have the ASIN
+  if (!(amazon_result?.available && amazon_result.kindle_asin)) {
+    const previewUrl = `https://www.amazon.com/s?k=${encodeURIComponent(kindleSearchQ)}&i=digital-text#sampleButton`;
+    kindleBtns += `<a href="${previewUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="Search Kindle store — find the book and click 'Send sample'">Send Preview ↗</a>`;
   }
 
   if (amazon_result?.affiliate_url) {
@@ -114,8 +120,14 @@ function buildBookCard(event, show) {
     ? `<p class="book-description">${escHtml(book.description)}</p>`
     : '';
 
-  const ratingStr = book.average_rating
-    ? `<span class="book-rating" title="Goodreads average rating">★ ${book.average_rating.toFixed(2)}${book.user_rating ? ` &nbsp;·&nbsp; My rating: ${'★'.repeat(book.user_rating)}${'☆'.repeat(5 - book.user_rating)}` : ''}</span>`
+  const avgRating = book.average_rating
+    ? `<span class="rating-avg" title="Goodreads average rating">★ ${book.average_rating.toFixed(2)}</span>`
+    : '';
+  const userRating = book.user_rating
+    ? `<span class="rating-user" title="Your Goodreads rating">${'★'.repeat(book.user_rating)}${'☆'.repeat(5 - book.user_rating)}</span>`
+    : '';
+  const ratingStr = (avgRating || userRating)
+    ? `<div class="book-rating-row">${avgRating}${userRating}</div>`
     : '';
 
   return `
@@ -123,9 +135,11 @@ function buildBookCard(event, show) {
       <div class="book-cover">${cover}</div>
       <div class="book-info">
         <div>
-          <div class="book-title">${escHtml(book.title)}</div>
+          <div class="book-title-row">
+            <div class="book-title">${escHtml(book.title)}</div>
+            ${ratingStr}
+          </div>
           <div class="book-author">${escHtml(book.author)}</div>
-          ${ratingStr}
           ${description}
         </div>
         ${libRows ? `<div class="library-list">${libRows}</div>` : ''}
