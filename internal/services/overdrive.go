@@ -31,7 +31,8 @@ func NewOverDriveService(cache *CacheService) *OverDriveService {
 type thunderResponse struct {
 	TotalItems int `json:"totalItems"`
 	Items      []struct {
-		ID              string `json:"id"`
+		ID        string `json:"id"`
+		ReserveID string `json:"reserveId"`
 		Title           string `json:"title"`
 		IsAvailable     bool   `json:"isAvailable"`
 		AvailableCopies int    `json:"availableCopies"`
@@ -93,7 +94,21 @@ func (s *OverDriveService) CheckAvailability(ctx context.Context, book models.Bo
 		result.OwnedCopies = item.OwnedCopies
 		result.HoldsCount = item.HoldsCount
 		result.EstimatedWait = item.EstimatedWait
-		result.OverDriveURL = fmt.Sprintf("https://libbyapp.com/library/%s/everything/page-1/%s", libraryKey, url.PathEscape(item.ID))
+
+		// Build the best Libby deep-link we can.
+		// Thunder API returns the media ID as "id" (numeric string, e.g. "3994736").
+		// "reserveId" is a UUID used for borrowing — "id" is what Libby deep-links use.
+		mediaID := item.ID
+		if mediaID == "" {
+			mediaID = item.ReserveID
+		}
+		slog.Debug("thunder item", "library", libraryKey, "title", item.Title, "id", item.ID, "reserveId", item.ReserveID)
+		if mediaID != "" {
+			result.OverDriveURL = fmt.Sprintf("https://libbyapp.com/library/%s/everything/page-1/%s", libraryKey, url.PathEscape(mediaID))
+		} else {
+			// Fallback: Libby title search (always works, lands on search results)
+			result.OverDriveURL = fmt.Sprintf("https://libbyapp.com/library/%s/search/query-%s", libraryKey, url.PathEscape(book.Title))
+		}
 
 		switch {
 		case item.IsAvailable:
