@@ -94,10 +94,12 @@ function buildBookCard(event, show) {
     kindleBtns += `<a href="${kindleSearchUrl}" target="_blank" rel="noopener" class="btn-kindle">Find on Kindle ↗</a>`;
   }
 
-  // Always show a "Send Preview" fallback if we don't have the ASIN
+  // Send Preview fallback — no ASIN, use ISBN field search which usually lands on the product page
   if (!(amazon_result?.available && amazon_result.kindle_asin)) {
-    const previewUrl = `https://www.amazon.com/s?k=${encodeURIComponent(kindleSearchQ)}&i=digital-text#sampleButton`;
-    kindleBtns += `<a href="${previewUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="Search Kindle store — find the book and click 'Send sample'">Send Preview ↗</a>`;
+    const previewUrl = isbn
+      ? `https://www.amazon.com/gp/search?index=digital-text&field-isbn=${encodeURIComponent(isbn)}`
+      : `https://www.amazon.com/s?k=${encodeURIComponent(kindleSearchQ)}&i=digital-text`;
+    kindleBtns += `<a href="${previewUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="Opens Kindle product page — click 'Send a free sample' to push a preview to your Kindle">Send Preview ↗</a>`;
   }
 
   if (amazon_result?.affiliate_url) {
