@@ -112,14 +112,24 @@
       <!-- Book grid -->
       <div class="book-grid" id="book-grid"></div>
 
-      <!-- Recommendations panel (hidden until populated) -->
+      <!-- Recommendations panel -->
       <div id="recs-panel" class="recs-panel" style="display:none;">
         <div class="recs-header">
-          <h2 class="recs-title">Available on Libby — You Might Also Like</h2>
-          <p class="recs-subtitle">Books similar to your shelf that are available to borrow right now.</p>
+          <h2 class="recs-title">You Might Also Like</h2>
+          <p class="recs-subtitle">Books similar to your shelf available to borrow right now on Libby.</p>
           <button class="recs-toggle" id="recs-toggle" aria-expanded="true">Hide</button>
         </div>
+        <div id="recs-loading" class="recs-loading" style="display:none;">
+          <span class="recs-spinner"></span> Finding recommendations…
+        </div>
         <div class="recs-grid" id="recs-grid"></div>
+      </div>
+
+      <!-- Recommendations trigger (shown after search completes) -->
+      <div id="recs-trigger" style="display:none; text-align:center; padding: 32px 0 48px;">
+        <button id="recs-btn" class="btn-recs">
+          ✨ Find recommendations based on your shelf
+        </button>
       </div>
 
     </div>

@@ -92,6 +92,7 @@ func main() {
 	)
 	librariesHandler := handlers.NewLibrariesHandler(database)
 	shortenHandler := handlers.NewShortenHandler(database)
+	recsHandler := handlers.NewRecommendationsHandler(goodreadsSvc, recommendationSvc)
 
 	// Router
 	r := chi.NewRouter()
@@ -101,6 +102,7 @@ func main() {
 
 	// API routes
 	r.Get("/api/search", searchHandler.ServeHTTP)
+	r.Get("/api/recommendations", recsHandler.ServeHTTP)
 	r.Get("/api/libraries", librariesHandler.ServeHTTP)
 	r.Post("/api/shorten", shortenHandler.Create)
 

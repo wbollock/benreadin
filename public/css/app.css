@@ -952,6 +952,57 @@ input::placeholder { color: var(--text-subtle); }
 .rename-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
 /* ================================================================
+   RECOMMENDATIONS BUTTON
+   ================================================================ */
+.btn-recs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 28px;
+  background: var(--surface);
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: .9375rem;
+  font-weight: 700;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  transition: all var(--transition);
+  box-shadow: var(--shadow-sm);
+  letter-spacing: .01em;
+}
+.btn-recs:hover {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 24px var(--accent-glow);
+  transform: translateY(-2px);
+}
+.btn-recs:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.recs-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: .875rem;
+  padding: 12px 0;
+}
+.recs-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ================================================================
    RECOMMENDATIONS
    ================================================================ */
 .recs-panel {

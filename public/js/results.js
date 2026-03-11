@@ -241,6 +241,9 @@
     document.getElementById('status-area').style.opacity = '1';
     const copyBtn = document.getElementById('copy-link-btn');
     if (copyBtn) copyBtn.style.display = 'none';
+    document.getElementById('recs-trigger').style.display = 'none';
+    document.getElementById('recs-panel').style.display = 'none';
+    document.getElementById('recs-grid').innerHTML = '';
   }
 
   function startStream(refresh) {
@@ -306,42 +309,13 @@
       setTimeout(() => {
         document.getElementById('status-area').style.opacity = '0.4';
       }, 2000);
+      // Show the recommendations trigger button.
+      document.getElementById('recs-trigger').style.display = 'block';
       // Create a shortlink for easy sharing/bookmarking.
       createShortlink();
     });
 
-    es.addEventListener('recommendations', e => {
-      const recs = JSON.parse(e.data);
-      if (!recs || recs.length === 0) return;
-
-      recsGrid.innerHTML = recs.map(rec => {
-        const cover = rec.cover_url
-          ? `<img src="${escHtml(rec.cover_url)}" alt="${escHtml(rec.title)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'rec-cover-placeholder\\'>📚</div>'">`
-          : `<div class="rec-cover-placeholder">📚</div>`;
-
-        const libBadges = (rec.library_results || [])
-          .filter(lr => lr.status === 'available')
-          .map(lr => `<span class="badge badge-available" title="${escHtml(lr.library_key)}">&#10003; ${escHtml(lr.library_key)}</span>`)
-          .join('');
-
-        const because = rec.because_of_title
-          ? `<div class="rec-because">Similar to <em>${escHtml(rec.because_of_title)}</em></div>`
-          : '';
-
-        return `
-          <div class="rec-card">
-            <div class="rec-cover">${cover}</div>
-            <div class="rec-info">
-              <div class="rec-title">${escHtml(rec.title)}</div>
-              <div class="rec-author">${escHtml(rec.author)}</div>
-              ${because}
-              <div class="rec-badges">${libBadges}</div>
-            </div>
-          </div>`;
-      }).join('');
-
-      recsPanel.style.display = 'block';
-    });
+    // No inline recommendations — they're loaded on demand via the button.
 
     es.addEventListener('error', e => {
       try {
@@ -414,6 +388,63 @@
     recsToggle.setAttribute('aria-expanded', String(!expanded));
     recsToggle.textContent = expanded ? 'Show' : 'Hide';
     recsGrid.style.display = expanded ? 'none' : '';
+  });
+
+  // ---- Recommendations ----
+
+  function renderRecs(recs) {
+    if (!recs || recs.length === 0) {
+      recsGrid.innerHTML = '<p style="color:var(--text-muted);font-size:.875rem;padding:8px 0;">No recommendations found — try adding more books to your shelf or checking a different library.</p>';
+      recsPanel.style.display = 'block';
+      return;
+    }
+    recsGrid.innerHTML = recs.map(rec => {
+      const cover = rec.cover_url
+        ? `<img src="${escHtml(rec.cover_url)}" alt="${escHtml(rec.title)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'rec-cover-placeholder\\'>📚</div>'">`
+        : `<div class="rec-cover-placeholder">📚</div>`;
+      const libBadges = (rec.library_results || [])
+        .filter(lr => lr.status === 'available')
+        .map(lr => `<span class="badge badge-available" title="${escHtml(window.getLibName(lr.library_key))}">&#10003; ${escHtml(window.getLibName(lr.library_key))}</span>`)
+        .join('');
+      const because = rec.because_of_title
+        ? `<div class="rec-because">Similar to <em>${escHtml(rec.because_of_title)}</em></div>`
+        : '';
+      return `
+        <div class="rec-card">
+          <div class="rec-cover">${cover}</div>
+          <div class="rec-info">
+            <div class="rec-title">${escHtml(rec.title)}</div>
+            <div class="rec-author">${escHtml(rec.author)}</div>
+            ${because}
+            <div class="rec-badges">${libBadges}</div>
+          </div>
+        </div>`;
+    }).join('');
+    recsPanel.style.display = 'block';
+  }
+
+  document.getElementById('recs-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('recs-btn');
+    const trigger = document.getElementById('recs-trigger');
+    const loading = document.getElementById('recs-loading');
+    btn.disabled = true;
+    btn.textContent = 'Finding recommendations…';
+    loading.style.display = 'flex';
+    recsPanel.style.display = 'block';
+    try {
+      const p = new URLSearchParams(baseParams);
+      const res = await fetch('/api/recommendations?' + p.toString());
+      if (!res.ok) throw new Error('Request failed');
+      const recs = await res.json();
+      trigger.style.display = 'none';
+      loading.style.display = 'none';
+      renderRecs(recs);
+    } catch (err) {
+      loading.style.display = 'none';
+      btn.disabled = false;
+      btn.textContent = '✨ Find recommendations based on your shelf';
+      recsGrid.innerHTML = '<p style="color:var(--red);font-size:.875rem;padding:8px 0;">Failed to load recommendations. Please try again.</p>';
+    }
   });
 
   startStream(false);

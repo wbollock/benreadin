@@ -61,12 +61,12 @@ func (s *OpenLibraryService) Enrich(ctx context.Context, books []models.Book) []
 	var wg sync.WaitGroup
 	for i := range enriched {
 		b := &enriched[i]
-		// Skip if we already have ISBN-13
-		if b.ISBN13 != "" {
+		// Skip if we already have everything we'd fetch
+		if b.ISBN13 != "" && b.PageCount > 0 {
 			continue
 		}
 		// Nothing to look up and no ISBN at all — skip
-		if b.ISBN10 == "" && b.Title == "" {
+		if b.ISBN10 == "" && b.ISBN13 == "" && b.Title == "" {
 			continue
 		}
 		wg.Add(1)
@@ -87,19 +87,22 @@ func (s *OpenLibraryService) Enrich(ctx context.Context, books []models.Book) []
 }
 
 func (s *OpenLibraryService) enrichBook(ctx context.Context, b *models.Book) error {
-	// Prefer ISBN lookup — fast and accurate
-	if b.ISBN10 != "" {
-		if err := s.lookupByISBN(ctx, b, b.ISBN10); err == nil && b.ISBN13 != "" {
+	// Prefer ISBN-13 lookup if we have one — gets page count directly.
+	if b.ISBN13 != "" {
+		if err := s.lookupByISBN(ctx, b, b.ISBN13); err == nil {
 			return nil
 		}
 	}
-
-	// Only fall back to search if we have no cover either — avoids
-	// a second slow HTTP round-trip for books that just need ISBN-13.
-	if b.CoverURL == "" || strings.Contains(b.CoverURL, "nophoto") {
+	// Fall back to ISBN-10.
+	if b.ISBN10 != "" {
+		if err := s.lookupByISBN(ctx, b, b.ISBN10); err == nil {
+			return nil
+		}
+	}
+	// Last resort: title+author search (also gets page count median).
+	if b.CoverURL == "" || strings.Contains(b.CoverURL, "nophoto") || b.PageCount == 0 {
 		return s.lookupBySearch(ctx, b)
 	}
-
 	return nil
 }
 
