@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,6 +49,8 @@ type grItem struct {
 	BookLargeImageURL string `xml:"book_large_image_url"`
 	BookImageURL      string `xml:"book_image_url"`
 	Description       string `xml:"description"`
+	AverageRating     string `xml:"average_rating"`
+	UserRating        string `xml:"user_rating"`
 }
 
 // FetchShelf paginates through a Goodreads RSS shelf and returns all books.
@@ -186,6 +189,13 @@ func itemToBook(item grItem) models.Book {
 		}
 		parts := strings.Split(raw, "/")
 		b.GoodreadsID = parts[len(parts)-1]
+	}
+
+	if v, err := strconv.ParseFloat(strings.TrimSpace(item.AverageRating), 64); err == nil {
+		b.AverageRating = v
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(item.UserRating)); err == nil {
+		b.UserRating = v
 	}
 
 	return b

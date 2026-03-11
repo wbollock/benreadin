@@ -370,9 +370,47 @@ input::placeholder { color: var(--text-subtle); }
 /* Gutenberg variant — green */
 .btn-gutenberg { background: #2e7d32; color: #fff; font-weight: 600; }
 .btn-gutenberg:hover { background: #256427; color: #fff; }
+.btn-gutenberg-sm {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-family: var(--font);
+  font-size: .8125rem;
+  font-weight: 600;
+  border: 1.5px solid #a5d6a7;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--transition);
+}
+.btn-gutenberg-sm:hover { background: #c8e6c9; text-decoration: none; }
+
+/* Primary borrow button */
+.btn-borrow {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font);
+  font-size: .875rem;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity var(--transition);
+}
+.btn-borrow:hover { opacity: .85; text-decoration: none; color: #fff; }
 
 /* Smaller secondary-style buttons */
 .btn-sm { padding: 5px 10px; font-size: .8125rem; }
+
+/* Card action groups */
+.card-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
+.card-actions-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
 /* Free ebook price pill */
 .price-pill-free {
@@ -380,6 +418,13 @@ input::placeholder { color: var(--text-subtle); }
   color: #2e7d32;
   border: 1.5px solid #a5d6a7;
   font-weight: 600;
+}
+
+/* Rating display */
+.book-rating {
+  font-size: .8rem;
+  color: var(--text-muted);
+  margin: 2px 0 4px;
 }
 
 /* ---- Progress Bar ---- */
@@ -636,11 +681,6 @@ input::placeholder { color: var(--text-subtle); }
 .price-pill .pill-amount { color: var(--text); }
 
 /* ---- Card Actions ---- */
-.card-actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
 
 /* ---- Filter / Sort Bar ---- */
 .filter-bar {

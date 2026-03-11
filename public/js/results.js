@@ -38,8 +38,7 @@
   // ---- Filter / Sort logic ----
 
   function bestStatus(libraryResults) {
-    // Return the "best" status across all libraries for a book.
-    if (!libraryResults || libraryResults.length === 0) return 'not_found';
+    if (!Array.isArray(libraryResults) || libraryResults.length === 0) return 'not_found';
     const priority = { available: 0, wait: 1, unavailable: 2, not_found: 3 };
     return libraryResults.reduce((best, lr) => {
       return (priority[lr.status] ?? 3) < (priority[best] ?? 3) ? lr.status : best;
@@ -82,6 +81,12 @@
           const wb = bestStatus(b.library_results) === 'available' ? -Infinity : minWait(b.library_results);
           return wa - wb;
         });
+        break;
+      case 'rating_desc':
+        copy.sort((a, b) => (b.book.average_rating || 0) - (a.book.average_rating || 0));
+        break;
+      case 'user_rating_desc':
+        copy.sort((a, b) => (b.book.user_rating || 0) - (a.book.user_rating || 0));
         break;
       case 'title_asc':
         copy.sort((a, b) => a.book.title.localeCompare(b.book.title));

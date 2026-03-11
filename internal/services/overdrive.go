@@ -93,7 +93,7 @@ func (s *OverDriveService) CheckAvailability(ctx context.Context, book models.Bo
 		result.OwnedCopies = item.OwnedCopies
 		result.HoldsCount = item.HoldsCount
 		result.EstimatedWait = item.EstimatedWait
-		result.OverDriveURL = fmt.Sprintf("https://libbyapp.com/library/%s/search/query-%s", libraryKey, url.QueryEscape(book.Title))
+		result.OverDriveURL = fmt.Sprintf("https://libbyapp.com/library/%s/everything/page-1/%s", libraryKey, url.PathEscape(item.ID))
 
 		switch {
 		case item.IsAvailable:

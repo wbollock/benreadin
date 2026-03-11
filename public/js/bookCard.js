@@ -44,46 +44,66 @@ function buildBookCard(event, show) {
     </div>`;
   }).join('');
 
-  // Price pills + action buttons
+  // ---- Price pills ----
   let pricePills = '';
-  let actionButtons = '';
-
-  // Extract affiliate tag once for reuse.
   const affiliateTag = amazon_result?.affiliate_url
-    ? (amazon_result.affiliate_url.match(/tag=([^&]+)/)?.[1] || '')
-    : '';
+    ? (amazon_result.affiliate_url.match(/tag=([^&]+)/)?.[1] || '') : '';
 
-  if (amazon_result && amazon_result.available) {
+  if (gutenberg_result) {
+    pricePills += `<span class="price-pill price-pill-free">Free · Project Gutenberg</span>`;
+  }
+  if (amazon_result?.available) {
     const kindle    = formatPrice(amazon_result.kindle_price);
     const paperback = formatPrice(amazon_result.paperback_price);
     const hardcover = formatPrice(amazon_result.hardcover_price);
+    if (kindle)    pricePills += `<span class="price-pill"><span class="pill-label">Kindle</span><span class="pill-amount">${kindle}</span></span>`;
+    if (paperback) pricePills += `<span class="price-pill"><span class="pill-label">Paperback</span><span class="pill-amount">${paperback}</span></span>`;
+    if (hardcover) pricePills += `<span class="price-pill"><span class="pill-label">Hardcover</span><span class="pill-amount">${hardcover}</span></span>`;
+  }
+  if (pricePills) pricePills = `<div class="price-row">${pricePills}</div>`;
 
-    const pills = [];
-    if (kindle)    pills.push(`<span class="price-pill"><span class="pill-label">Kindle</span><span class="pill-amount">${kindle}</span></span>`);
-    if (paperback) pills.push(`<span class="price-pill"><span class="pill-label">Paperback</span><span class="pill-amount">${paperback}</span></span>`);
-    if (hardcover) pills.push(`<span class="price-pill"><span class="pill-label">Hardcover</span><span class="pill-amount">${hardcover}</span></span>`);
-    if (pills.length) pricePills = `<div class="price-row">${pills.join('')}</div>`;
+  // ---- Action buttons ----
+  // Group 1: borrow / get for free (primary)
+  let primaryBtns = '';
+  // Group 2: kindle actions
+  let kindleBtns = '';
 
-    if (amazon_result.kindle_asin) {
-      const kindleUrl  = `https://www.amazon.com/dp/${escHtml(amazon_result.kindle_asin)}?tag=${encodeURIComponent(affiliateTag)}`;
-      const sampleUrl  = kindleUrl + '#sampleButton';
-      actionButtons += `<a href="${kindleUrl}" target="_blank" rel="noopener" class="btn-kindle">Buy for Kindle</a>`;
-      actionButtons += `<a href="${sampleUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm">Send Sample</a>`;
-    }
-
-    if (amazon_result.affiliate_url) {
-      actionButtons += `<a href="${escHtml(amazon_result.affiliate_url)}" target="_blank" rel="noopener" class="btn-secondary btn-sm">
-        Amazon
-        <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-      </a>`;
-    }
+  // Best available library link
+  const availLib = (library_results || []).find(lr => lr.status === 'available' && lr.overdrive_url);
+  const anyLib   = (library_results || []).find(lr => lr.overdrive_url);
+  if (availLib) {
+    primaryBtns += `<a href="${escHtml(availLib.overdrive_url)}" target="_blank" rel="noopener" class="btn-borrow">Borrow on Libby ↗</a>`;
+  } else if (anyLib) {
+    primaryBtns += `<a href="${escHtml(anyLib.overdrive_url)}" target="_blank" rel="noopener" class="btn-secondary btn-sm">View on Libby ↗</a>`;
   }
 
-  // Gutenberg free ebook badge + download
   if (gutenberg_result) {
-    pricePills = `<div class="price-row"><span class="price-pill price-pill-free">Free on Project Gutenberg</span></div>` + pricePills;
-    actionButtons = `<a href="${escHtml(gutenberg_result.epub_url)}" target="_blank" rel="noopener" class="btn-kindle btn-gutenberg" title="Download EPUB — then use Send to Kindle app or email to your Kindle address">Download EPUB (Free)</a>` + actionButtons;
+    primaryBtns += `<a href="${escHtml(gutenberg_result.epub_url)}" target="_blank" rel="noopener" class="btn-gutenberg-sm" title="Download EPUB, then send via Send to Kindle app or your @kindle.com email">Download EPUB ↗</a>`;
   }
+
+  // Kindle buttons
+  if (amazon_result?.available && amazon_result.kindle_asin) {
+    const kindleUrl = `https://www.amazon.com/dp/${escHtml(amazon_result.kindle_asin)}?tag=${encodeURIComponent(affiliateTag)}`;
+    kindleBtns += `<a href="${kindleUrl}" target="_blank" rel="noopener" class="btn-kindle">Buy for Kindle</a>`;
+    kindleBtns += `<a href="${kindleUrl}#sampleButton" target="_blank" rel="noopener" class="btn-secondary btn-sm">Send Sample ↗</a>`;
+  } else {
+    // No Amazon creds — fall back to an Amazon Kindle search by ISBN or title
+    const isbn = book.isbn13 || book.isbn10;
+    const q = isbn ? isbn : (book.title + ' ' + book.author);
+    const kindleSearchUrl = `https://www.amazon.com/s?k=${encodeURIComponent(q)}&i=digital-text`;
+    kindleBtns += `<a href="${kindleSearchUrl}" target="_blank" rel="noopener" class="btn-kindle">Find on Kindle ↗</a>`;
+  }
+
+  if (amazon_result?.affiliate_url) {
+    kindleBtns += `<a href="${escHtml(amazon_result.affiliate_url)}" target="_blank" rel="noopener" class="btn-secondary btn-sm">Amazon ↗</a>`;
+  }
+
+  const actionButtons = (primaryBtns || kindleBtns)
+    ? `<div class="card-actions">
+        ${primaryBtns ? `<div class="card-actions-group">${primaryBtns}</div>` : ''}
+        <div class="card-actions-group">${kindleBtns}</div>
+       </div>`
+    : '';
 
   // Cover image
   const cover = book.cover_url
@@ -94,6 +114,10 @@ function buildBookCard(event, show) {
     ? `<p class="book-description">${escHtml(book.description)}</p>`
     : '';
 
+  const ratingStr = book.average_rating
+    ? `<span class="book-rating" title="Goodreads average rating">★ ${book.average_rating.toFixed(2)}${book.user_rating ? ` &nbsp;·&nbsp; My rating: ${'★'.repeat(book.user_rating)}${'☆'.repeat(5 - book.user_rating)}` : ''}</span>`
+    : '';
+
   return `
     <article class="book-card${show === false ? ' hidden' : ''}">
       <div class="book-cover">${cover}</div>
@@ -101,11 +125,12 @@ function buildBookCard(event, show) {
         <div>
           <div class="book-title">${escHtml(book.title)}</div>
           <div class="book-author">${escHtml(book.author)}</div>
+          ${ratingStr}
           ${description}
         </div>
         ${libRows ? `<div class="library-list">${libRows}</div>` : ''}
         ${pricePills}
-        ${actionButtons ? `<div class="card-actions">${actionButtons}</div>` : ''}
+        ${actionButtons}
       </div>
     </article>
   `;
