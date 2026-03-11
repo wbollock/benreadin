@@ -63,6 +63,11 @@ function buildBookCard(event, show) {
   }
   if (pricePills) pricePills = `<div class="price-row">${pricePills}</div>`;
 
+  // ---- Goodreads link ----
+  const grUrl = book.goodreads_id
+    ? `https://www.goodreads.com/book/show/${escHtml(book.goodreads_id)}`
+    : null;
+
   // ---- Action buttons ----
   // Group 1: borrow / get for free (primary)
   let primaryBtns = '';
@@ -105,6 +110,9 @@ function buildBookCard(event, show) {
 
   if (amazon_result?.affiliate_url) {
     kindleBtns += `<a href="${escHtml(amazon_result.affiliate_url)}" target="_blank" rel="noopener" class="btn-secondary btn-sm">Amazon ↗</a>`;
+  }
+  if (grUrl) {
+    kindleBtns += `<a href="${grUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="View on Goodreads">GR ↗</a>`;
   }
 
   const actionButtons = (primaryBtns || kindleBtns)

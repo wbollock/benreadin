@@ -44,7 +44,7 @@
   </header>
 
   <main>
-    <div class="container" style="padding-top: 32px;">
+    <div class="container" style="padding-top: 28px;">
 
       <!-- Status / progress -->
       <div id="status-area" class="results-status">
@@ -61,6 +61,17 @@
         <div class="results-header">
           <h2>Results <span class="results-count" id="results-count"></span></h2>
         </div>
+
+        <!-- Legend -->
+        <div class="results-legend">
+          <strong>Key:</strong>
+          <span class="legend-item"><span class="badge badge-available">✓ Available</span> — borrow now</span>
+          <span class="legend-item"><span class="badge badge-wait">⌛ N-day wait</span> — place a hold</span>
+          <span class="legend-item"><span class="badge badge-notfound">Not found</span> — not on Libby</span>
+          <span class="legend-item"><span class="badge-kindle-pill">K</span> — Kindle delivery available from Libby</span>
+          <span class="legend-item"><span class="badge" style="background:#d1fae5;color:#065f46;">Free · Gutenberg</span> — free EPUB download</span>
+        </div>
+
         <div class="filter-bar">
           <!-- Availability filter -->
           <div class="filter-group">
@@ -112,8 +123,9 @@
 
   <footer class="site-footer">
     <div class="container">
-      ShelfPrice is not affiliated with Goodreads, Libby, or OverDrive.
-      Book availability data is live from OverDrive.
+      <p>ShelfPrice is inspired by <a href="https://www.overreader.com" target="_blank" rel="noopener">OverReader</a> and is not affiliated with Goodreads, Hardcover.app, TheStoryGraph, Libby, or OverDrive.</p>
+      <p style="margin-top:6px;">Book availability data is live from OverDrive. All books and covers are owned by their respective authors and publishers.</p>
+      <p style="margin-top:6px;">As an Amazon Associate, ShelfPrice may earn commissions from qualifying purchases from Amazon.com.</p>
     </div>
   </footer>
 
@@ -125,7 +137,7 @@
       <div class="rename-modal-hint" id="rename-hint"></div>
       <div class="rename-modal-actions">
         <button class="btn-secondary" id="rename-cancel">Cancel</button>
-        <button class="btn-primary" id="rename-save">Save</button>
+        <button class="btn-primary" id="rename-save" style="width:auto;margin-top:0;">Save</button>
       </div>
     </div>
   </div>
