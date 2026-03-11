@@ -19,8 +19,6 @@
   let completedBooks = 0;
   let activeFilter  = 'all';
   let activeSort    = 'default';
-  // True when sort/filter changed mid-stream so the final renderGrid is needed
-  let gridDirty     = false;
 
   // ---- Utilities ----
 
@@ -126,14 +124,12 @@
       filterBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       activeFilter = btn.dataset.filter;
-      gridDirty = true;
       renderGrid();
     });
   });
 
   sortSelect.addEventListener('change', () => {
     activeSort = sortSelect.value;
-    gridDirty = true;
     renderGrid();
   });
 
@@ -172,32 +168,27 @@
   es.addEventListener('book', e => {
     const event = JSON.parse(e.data);
     allBooks.push(event);
-    // Incremental append while streaming (avoid full re-render on every book)
-    if (!gridDirty) {
-      if (filterBook(event)) {
-        bookGrid.insertAdjacentHTML('beforeend', buildBookCard(event, true));
-      }
-      updateCount(bookGrid.querySelectorAll('.book-card').length);
-      resultsHeader.style.display = 'block';
-    } else {
-      // Sort or filter changed mid-stream — re-render to keep order/visibility correct
-      renderGrid();
+    // Always append incrementally during streaming — no full re-render per book.
+    // Sort order is applied once when the stream ends.
+    if (filterBook(event)) {
+      bookGrid.insertAdjacentHTML('beforeend', buildBookCard(event, true));
     }
+    const visibleCount = bookGrid.querySelectorAll('.book-card').length;
+    updateCount(visibleCount < allBooks.length ? visibleCount : undefined);
+    resultsHeader.style.display = 'block';
   });
 
   es.addEventListener('done', e => {
     const data = JSON.parse(e.data);
     setProgress(100, data.message || 'Done');
     es.close();
-    // Only re-render if sort/filter changed during streaming; otherwise the
-    // incremental appends are already correct and a full rebuild would cause a flash.
-    if (gridDirty) {
-      renderGrid();
-      gridDirty = false;
-    }
+    // One final render to apply sort order and correct counts.
+    renderGrid();
     setTimeout(() => {
       document.getElementById('status-area').style.opacity = '0.4';
     }, 2000);
+    // Create a shortlink for easy sharing/bookmarking.
+    createShortlink();
   });
 
   es.addEventListener('recommendations', e => {
@@ -253,4 +244,29 @@
     showError('Connection lost. Please try again.');
     es.close();
   };
+
+  // ---- Shortlink ----
+
+  async function createShortlink() {
+    try {
+      const res = await fetch('/api/shorten', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: shelfUrl, libraries }),
+      });
+      if (!res.ok) return;
+      const { link } = await res.json();
+      const fullLink = window.location.origin + link;
+      const btn = document.getElementById('copy-link-btn');
+      if (!btn) return;
+      btn.dataset.href = fullLink;
+      btn.style.display = 'inline-flex';
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(fullLink).then(() => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy link'; }, 2000);
+        });
+      });
+    } catch { /* non-critical */ }
+  }
 })();
