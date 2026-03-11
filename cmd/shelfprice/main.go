@@ -54,6 +54,15 @@ func main() {
 	goodreadsSvc := services.NewGoodreadsService()
 	overdriveSvc := services.NewOverDriveService(cache)
 	openLibrarySvc := services.NewOpenLibraryService()
+	gutenbergSvc := services.NewGutenbergService(database)
+
+	// Load Gutenberg catalog in background (startup may be slow on first run).
+	go func() {
+		if err := gutenbergSvc.LoadCatalog(context.Background()); err != nil {
+			slog.Warn("gutenberg catalog load failed", "err", err)
+		}
+	}()
+
 	amazonSvc := services.NewAmazonService(services.AmazonConfig{
 		AccessKey:   cfg.amazonAccessKey,
 		SecretKey:   cfg.amazonSecretKey,
@@ -76,6 +85,7 @@ func main() {
 		openLibrarySvc,
 		amazonSvc,
 		recommendationSvc,
+		gutenbergSvc,
 		cache,
 		cfg.odConcurrency,
 		cfg.azConcurrency,

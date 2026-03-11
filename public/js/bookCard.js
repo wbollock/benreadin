@@ -27,22 +27,27 @@ function availabilityBadge(result) {
 }
 
 function buildBookCard(event, show) {
-  const { book, library_results, amazon_result } = event;
+  const { book, library_results, amazon_result, gutenberg_result } = event;
 
-  // Library rows
+  // Library rows — badge links to OverDrive page where Kindle delivery is available
   const libRows = (library_results || []).map(lr => `
     <div class="library-row">
       <span class="library-key">${escHtml(lr.library_key)}</span>
       ${lr.overdrive_url
-        ? `<a href="${escHtml(lr.overdrive_url)}" target="_blank" rel="noopener" style="text-decoration:none">${availabilityBadge(lr)}</a>`
+        ? `<a href="${escHtml(lr.overdrive_url)}" target="_blank" rel="noopener" style="text-decoration:none" title="${lr.status === 'available' ? 'Borrow on Libby — Kindle delivery available' : 'View on OverDrive'}">${availabilityBadge(lr)}</a>`
         : availabilityBadge(lr)
       }
     </div>
   `).join('');
 
-  // Price pills
+  // Price pills + action buttons
   let pricePills = '';
   let actionButtons = '';
+
+  // Extract affiliate tag once for reuse.
+  const affiliateTag = amazon_result?.affiliate_url
+    ? (amazon_result.affiliate_url.match(/tag=([^&]+)/)?.[1] || '')
+    : '';
 
   if (amazon_result && amazon_result.available) {
     const kindle    = formatPrice(amazon_result.kindle_price);
@@ -53,22 +58,27 @@ function buildBookCard(event, show) {
     if (kindle)    pills.push(`<span class="price-pill"><span class="pill-label">Kindle</span><span class="pill-amount">${kindle}</span></span>`);
     if (paperback) pills.push(`<span class="price-pill"><span class="pill-label">Paperback</span><span class="pill-amount">${paperback}</span></span>`);
     if (hardcover) pills.push(`<span class="price-pill"><span class="pill-label">Hardcover</span><span class="pill-amount">${hardcover}</span></span>`);
+    if (pills.length) pricePills = `<div class="price-row">${pills.join('')}</div>`;
 
-    if (pills.length) {
-      pricePills = `<div class="price-row">${pills.join('')}</div>`;
+    if (amazon_result.kindle_asin) {
+      const kindleUrl  = `https://www.amazon.com/dp/${escHtml(amazon_result.kindle_asin)}?tag=${encodeURIComponent(affiliateTag)}`;
+      const sampleUrl  = kindleUrl + '#sampleButton';
+      actionButtons += `<a href="${kindleUrl}" target="_blank" rel="noopener" class="btn-kindle">Buy for Kindle</a>`;
+      actionButtons += `<a href="${sampleUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm">Send Sample</a>`;
     }
 
     if (amazon_result.affiliate_url) {
-      actionButtons += `<a href="${escHtml(amazon_result.affiliate_url)}" target="_blank" rel="noopener" class="btn-secondary">
-        View on Amazon
-        <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      actionButtons += `<a href="${escHtml(amazon_result.affiliate_url)}" target="_blank" rel="noopener" class="btn-secondary btn-sm">
+        Amazon
+        <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
       </a>`;
     }
+  }
 
-    if (amazon_result.kindle_asin) {
-      const sampleUrl = `https://www.amazon.com/dp/${escHtml(amazon_result.kindle_asin)}?tag=${encodeURIComponent(amazon_result.affiliate_url ? amazon_result.affiliate_url.match(/tag=([^&]+)/)?.[1] || '' : '')}#sampleButton`;
-      actionButtons += `<a href="${sampleUrl}" target="_blank" rel="noopener" class="btn-kindle">Send Kindle Sample</a>`;
-    }
+  // Gutenberg free ebook badge + download
+  if (gutenberg_result) {
+    pricePills = `<div class="price-row"><span class="price-pill price-pill-free">Free on Project Gutenberg</span></div>` + pricePills;
+    actionButtons = `<a href="${escHtml(gutenberg_result.epub_url)}" target="_blank" rel="noopener" class="btn-kindle btn-gutenberg" title="Download EPUB — then use Send to Kindle app or email to your Kindle address">Download EPUB (Free)</a>` + actionButtons;
   }
 
   // Cover image

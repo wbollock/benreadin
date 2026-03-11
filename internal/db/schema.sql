@@ -28,6 +28,15 @@ CREATE TABLE IF NOT EXISTS shelf_cache (
   fetched_at  INTEGER NOT NULL
 );
 
+-- Project Gutenberg catalog (refreshed weekly on startup)
+CREATE TABLE IF NOT EXISTS gutenberg_books (
+  id        INTEGER PRIMARY KEY,  -- Gutenberg text number
+  title     TEXT NOT NULL,
+  author    TEXT NOT NULL,        -- normalized: "lastname firstname" lowercase
+  epub_url  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gutenberg_title ON gutenberg_books(title);
+
 -- Per-book result cache: full BookEvent keyed by goodreads_id + sorted libraries (TTL 2h default)
 CREATE TABLE IF NOT EXISTS book_cache (
   id           INTEGER PRIMARY KEY,

@@ -22,9 +22,10 @@ type SearchRequest struct {
 
 // BookEvent is a single SSE payload sent to the client.
 type BookEvent struct {
-	Book           models.Book            `json:"book"`
-	LibraryResults []models.LibraryResult `json:"library_results"`
-	AmazonResult   models.AmazonResult    `json:"amazon_result"`
+	Book            models.Book             `json:"book"`
+	LibraryResults  []models.LibraryResult  `json:"library_results"`
+	AmazonResult    models.AmazonResult     `json:"amazon_result"`
+	GutenbergResult *models.GutenbergResult `json:"gutenberg_result,omitempty"`
 }
 
 // ProgressEvent reports overall search progress.
@@ -41,6 +42,7 @@ type SearchHandler struct {
 	openLibrary     *services.OpenLibraryService
 	amazon          *services.AmazonService
 	recommendations *services.RecommendationService
+	gutenberg       *services.GutenbergService
 	cache           *services.CacheService
 	odSem           *semaphore.Weighted
 	azSem           *semaphore.Weighted
@@ -52,6 +54,7 @@ func NewSearchHandler(
 	ol *services.OpenLibraryService,
 	az *services.AmazonService,
 	recs *services.RecommendationService,
+	gb *services.GutenbergService,
 	cache *services.CacheService,
 	odConcurrency, azConcurrency int64,
 ) *SearchHandler {
@@ -61,6 +64,7 @@ func NewSearchHandler(
 		openLibrary:     ol,
 		amazon:          az,
 		recommendations: recs,
+		gutenberg:       gb,
 		cache:           cache,
 		odSem:           semaphore.NewWeighted(odConcurrency),
 		azSem:           semaphore.NewWeighted(azConcurrency),
@@ -155,9 +159,10 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	// Open Library enrichment and OverDrive/Amazon checks are pipelined per book
 	// so we don't wait for all enrichment before starting availability checks.
 	type result struct {
-		book           models.Book
-		libraryResults []models.LibraryResult
-		amazonResult   models.AmazonResult
+		book            models.Book
+		libraryResults  []models.LibraryResult
+		amazonResult    models.AmazonResult
+		gutenbergResult *models.GutenbergResult
 	}
 
 	resultCh := make(chan result, len(books))
@@ -226,18 +231,23 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			// Gutenberg lookup (fast local SQLite — no semaphore needed).
+			gbResult := h.gutenberg.Lookup(book.Title, book.Author)
+
 			res := result{
-				book:           book,
-				libraryResults: libResults,
-				amazonResult:   azResult,
+				book:            book,
+				libraryResults:  libResults,
+				amazonResult:    azResult,
+				gutenbergResult: gbResult,
 			}
 
 			// Store to book cache for future searches.
 			if book.GoodreadsID != "" {
 				if err := h.cache.SetBook(book.GoodreadsID, libsKey, BookEvent{
-					Book:           res.book,
-					LibraryResults: res.libraryResults,
-					AmazonResult:   res.amazonResult,
+					Book:            res.book,
+					LibraryResults:  res.libraryResults,
+					AmazonResult:    res.amazonResult,
+					GutenbergResult: res.gutenbergResult,
 				}); err != nil {
 					slog.Warn("book cache set failed", "book", book.Title, "err", err)
 				}
@@ -264,9 +274,10 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		completed++
 		enrichedBooks = append(enrichedBooks, res.book)
 		sendEvent("book", BookEvent{
-			Book:           res.book,
-			LibraryResults: res.libraryResults,
-			AmazonResult:   res.amazonResult,
+			Book:            res.book,
+			LibraryResults:  res.libraryResults,
+			AmazonResult:    res.amazonResult,
+			GutenbergResult: res.gutenbergResult,
 		})
 		sendEvent("progress", ProgressEvent{
 			Total:     len(books),

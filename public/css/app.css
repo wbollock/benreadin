@@ -354,6 +354,21 @@ input::placeholder { color: var(--text-subtle); }
 }
 .btn-kindle:hover { background: #e88a00; text-decoration: none; color: #111; }
 
+/* Gutenberg variant — green */
+.btn-gutenberg { background: #2e7d32; color: #fff; font-weight: 600; }
+.btn-gutenberg:hover { background: #256427; color: #fff; }
+
+/* Smaller secondary-style buttons */
+.btn-sm { padding: 5px 10px; font-size: .8125rem; }
+
+/* Free ebook price pill */
+.price-pill-free {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1.5px solid #a5d6a7;
+  font-weight: 600;
+}
+
 /* ---- Progress Bar ---- */
 .progress-bar-wrap {
   background: var(--border-soft);
