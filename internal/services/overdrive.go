@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/wbollock/shelfprice/internal/models"
+	"github.com/wbollock/benreadin/internal/models"
 )
 
 const thunderBase = "https://thunder.api.overdrive.com/v2/libraries/%s/media"
@@ -151,7 +151,7 @@ func (s *OverDriveService) fetchThunder(ctx context.Context, libraryKey, query s
 	q.Set("format", "ebook-overdrive,ebook-epub-adobe,ebook-kindle")
 	req.URL.RawQuery = q.Encode()
 
-	req.Header.Set("User-Agent", "shelfprice/1.0")
+	req.Header.Set("User-Agent", "benreadin/1.0")
 
 	resp, err := s.client.Do(req)
 	if err != nil {

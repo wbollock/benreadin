@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/wbollock/shelfprice/internal/services"
+	"github.com/wbollock/benreadin/internal/services"
 )
 
 // RecommendationsHandler handles GET /api/recommendations.

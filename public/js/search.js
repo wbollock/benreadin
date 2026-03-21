@@ -17,12 +17,12 @@
 
   // ---- Aliases (localStorage) ----
   function loadAliases() {
-    try { return JSON.parse(localStorage.getItem('shelfprice_lib_aliases') || '{}'); } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem('benreadin_lib_aliases') || '{}'); } catch { return {}; }
   }
   function saveAlias(key, alias) {
     const aliases = loadAliases();
     if (alias) aliases[key] = alias; else delete aliases[key];
-    localStorage.setItem('shelfprice_lib_aliases', JSON.stringify(aliases));
+    localStorage.setItem('benreadin_lib_aliases', JSON.stringify(aliases));
   }
   function displayName(key, name) {
     const aliases = loadAliases();

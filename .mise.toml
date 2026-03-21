@@ -3,20 +3,20 @@ go = "1.25"
 
 [tasks.dev]
 description = "Run dev server"
-run = "go run ./cmd/shelfprice"
+run = "go run ./cmd/benreadin"
 
 [tasks.build]
 description = "Compile binary to bin/"
-run = "go build -o bin/shelfprice ./cmd/shelfprice"
+run = "go build -o bin/benreadin ./cmd/benreadin"
 
 [tasks.start]
 description = "Run compiled binary"
-run = "./bin/shelfprice"
+run = "./bin/benreadin"
 depends = ["build"]
 
 [tasks.migrate]
 description = "Run DB migrations and exit"
-run = "go run ./cmd/shelfprice -migrate-only"
+run = "go run ./cmd/benreadin -migrate-only"
 
 [tasks.lint]
 description = "Vet all packages"

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wbollock/shelfprice/internal/models"
+	"github.com/wbollock/benreadin/internal/models"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -227,7 +227,7 @@ func (s *RecommendationService) fetchSimilar(ctx context.Context, b models.Book)
 	q.Set("limit", "1")
 	q.Set("fields", "subject,cover_i,isbn,title,author_name")
 	req.URL.RawQuery = q.Encode()
-	req.Header.Set("User-Agent", "shelfprice/1.0 (+https://github.com/wbollock/shelfprice)")
+	req.Header.Set("User-Agent", "benreadin/1.0 (+https://github.com/wbollock/benreadin)")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -257,7 +257,7 @@ func (s *RecommendationService) fetchSimilar(ctx context.Context, b models.Book)
 	if err != nil {
 		return nil, err
 	}
-	req2.Header.Set("User-Agent", "shelfprice/1.0 (+https://github.com/wbollock/shelfprice)")
+	req2.Header.Set("User-Agent", "benreadin/1.0 (+https://github.com/wbollock/benreadin)")
 
 	resp2, err := s.client.Do(req2)
 	if err != nil {

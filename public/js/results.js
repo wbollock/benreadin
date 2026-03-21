@@ -17,9 +17,10 @@
   const allBooks = [];
   let totalBooks    = 0;
   let completedBooks = 0;
-  let activeFilter  = 'all';
+  // Multi-select filters: a Set of active filter keys. Empty = show all.
+  const activeFilters = new Set();
   // Persist sort preference in localStorage; default to available_first.
-  const SORT_KEY = 'shelfprice_sort';
+  const SORT_KEY = 'benreadin_sort';
   let activeSort = localStorage.getItem(SORT_KEY) || 'available_first';
 
   // ---- Utilities ----
@@ -54,14 +55,15 @@
   }
 
   function filterBook(event) {
+    if (activeFilters.size === 0) return true; // nothing selected = show all
     const status = bestStatus(event.library_results);
-    if (activeFilter === 'all') return true;
-    if (activeFilter === 'available') return status === 'available';
-    if (activeFilter === 'wait') return status === 'wait';
-    if (activeFilter === 'not_found') return status === 'not_found' || status === 'unavailable';
-    if (activeFilter === 'kindle') return (event.library_results || []).some(lr => lr.has_kindle);
-    if (activeFilter === 'gutenberg') return !!event.gutenberg_result;
-    return true;
+    // Book passes if it matches ANY active filter (OR logic).
+    if (activeFilters.has('available') && status === 'available') return true;
+    if (activeFilters.has('wait') && status === 'wait') return true;
+    if (activeFilters.has('not_found') && (status === 'not_found' || status === 'unavailable')) return true;
+    if (activeFilters.has('kindle') && (event.library_results || []).some(lr => lr.has_kindle)) return true;
+    if (activeFilters.has('gutenberg') && !!event.gutenberg_result) return true;
+    return false;
   }
 
   function sortedBooks() {
@@ -173,11 +175,29 @@
 
   // ---- Filter / sort event listeners ----
 
+  function syncFilterUI() {
+    const allBtn = document.querySelector('[data-filter="all"]');
+    filterBtns.forEach(btn => {
+      if (btn.dataset.filter === 'all') {
+        btn.classList.toggle('active', activeFilters.size === 0);
+      } else {
+        btn.classList.toggle('active', activeFilters.has(btn.dataset.filter));
+      }
+    });
+  }
+
   filterBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      filterBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeFilter = btn.dataset.filter;
+      if (btn.dataset.filter === 'all') {
+        activeFilters.clear();
+      } else {
+        if (activeFilters.has(btn.dataset.filter)) {
+          activeFilters.delete(btn.dataset.filter);
+        } else {
+          activeFilters.add(btn.dataset.filter);
+        }
+      }
+      syncFilterUI();
       renderGrid();
     });
   });
@@ -203,12 +223,12 @@
 
   // Aliases override URL names; URL names override raw keys.
   function loadAliases() {
-    try { return JSON.parse(localStorage.getItem('shelfprice_lib_aliases') || '{}'); } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem('benreadin_lib_aliases') || '{}'); } catch { return {}; }
   }
   function saveAlias(key, alias) {
     const aliases = loadAliases();
     if (alias) aliases[key] = alias; else delete aliases[key];
-    localStorage.setItem('shelfprice_lib_aliases', JSON.stringify(aliases));
+    localStorage.setItem('benreadin_lib_aliases', JSON.stringify(aliases));
   }
   window.getLibName = key => {
     const aliases = loadAliases();
@@ -277,7 +297,7 @@
       if (filterBook(event)) {
         const status = bestStatus(event.library_results);
         const html = buildBookCard(event, true);
-        if (activeSort === 'available_first' && status !== 'available') {
+        if (activeSort === 'available_first' && status !== 'available' && status !== 'wait') {
           // Non-available: always append at the end.
           bookGrid.insertAdjacentHTML('beforeend', html);
         } else if (activeSort === 'available_first' && status === 'available') {

@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/wbollock/shelfprice/internal/models"
+	"github.com/wbollock/benreadin/internal/models"
 )
 
 const (
@@ -56,7 +56,7 @@ func (g *GutenbergService) LoadCatalog(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("gutenberg catalog request: %w", err)
 	}
-	req.Header.Set("User-Agent", "ShelfPrice/1.0 (catalog import)")
+	req.Header.Set("User-Agent", "BenReadin/1.0 (catalog import)")
 
 	resp, err := g.client.Do(req)
 	if err != nil {

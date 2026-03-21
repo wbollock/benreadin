@@ -1,7 +1,7 @@
 'use strict';
 
 (function () {
-  const THEME_KEY = 'shelfprice_theme';
+  const THEME_KEY = 'benreadin_theme';
 
   function isDark() {
     return document.documentElement.dataset.theme === 'dark';

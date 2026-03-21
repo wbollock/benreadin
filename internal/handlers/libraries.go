@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/wbollock/shelfprice/internal/models"
+	"github.com/wbollock/benreadin/internal/models"
 )
 
 // LibrariesHandler serves GET /api/libraries?q={query} for autocomplete.

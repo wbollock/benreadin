@@ -1,4 +1,4 @@
-module github.com/wbollock/shelfprice
+module github.com/wbollock/benreadin
 
 go 1.25.0
 

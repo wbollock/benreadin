@@ -15,9 +15,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
-	"github.com/wbollock/shelfprice/internal/db"
-	"github.com/wbollock/shelfprice/internal/handlers"
-	"github.com/wbollock/shelfprice/internal/services"
+	"github.com/wbollock/benreadin/internal/db"
+	"github.com/wbollock/benreadin/internal/handlers"
+	"github.com/wbollock/benreadin/internal/services"
 )
 
 func main() {

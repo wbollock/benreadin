@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wbollock/shelfprice/internal/models"
-	"github.com/wbollock/shelfprice/internal/services"
+	"github.com/wbollock/benreadin/internal/models"
+	"github.com/wbollock/benreadin/internal/services"
 	"golang.org/x/sync/semaphore"
 )
 

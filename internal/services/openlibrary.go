@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wbollock/shelfprice/internal/models"
+	"github.com/wbollock/benreadin/internal/models"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -112,7 +112,7 @@ func (s *OpenLibraryService) lookupByISBN(ctx context.Context, b *models.Book, i
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "shelfprice/1.0 (+https://github.com/wbollock/shelfprice)")
+	req.Header.Set("User-Agent", "benreadin/1.0 (+https://github.com/wbollock/benreadin)")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -163,7 +163,7 @@ func (s *OpenLibraryService) lookupBySearch(ctx context.Context, b *models.Book)
 	q.Set("limit", "1")
 	q.Set("fields", "isbn,number_of_pages_median")
 	req.URL.RawQuery = q.Encode()
-	req.Header.Set("User-Agent", "shelfprice/1.0 (+https://github.com/wbollock/shelfprice)")
+	req.Header.Set("User-Agent", "benreadin/1.0 (+https://github.com/wbollock/benreadin)")
 
 	resp, err := s.client.Do(req)
 	if err != nil {

@@ -1,4 +1,4 @@
-# ShelfPrice — Architecture Plan
+# BenReadin — Architecture Plan
 
 ## Overview
 
@@ -81,7 +81,7 @@ Parse out: `libraries` (comma-separated keys), `userId`, `shelf`.
 
 ```
 cmd/
-  shelfprice/
+  benreadin/
     main.go                 -- entry point, wires everything together
 internal/
   db/
@@ -250,12 +250,75 @@ Defined in `.mise.toml` under `[tasks]`:
 
 | Task | Command | Description |
 |---|---|---|
-| `mise run dev` | `go run ./cmd/shelfprice` | Run dev server (loads `.env`) |
-| `mise run build` | `go build -o bin/shelfprice ./cmd/shelfprice` | Compile binary to `bin/` |
-| `mise run start` | `./bin/shelfprice` | Run compiled binary |
-| `mise run migrate` | `go run ./cmd/shelfprice -migrate-only` | Run DB migrations and exit |
+| `mise run dev` | `go run ./cmd/benreadin` | Run dev server (loads `.env`) |
+| `mise run build` | `go build -o bin/benreadin ./cmd/benreadin` | Compile binary to `bin/` |
+| `mise run start` | `./bin/benreadin` | Run compiled binary |
+| `mise run migrate` | `go run ./cmd/benreadin -migrate-only` | Run DB migrations and exit |
 | `mise run lint` | `go vet ./...` | Vet all packages |
 | `mise run test` | `go test ./...` | Run all tests |
+
+---
+
+## Planned Features
+
+### 1. Goodreads Username Lookup
+**Goal:** User types just their Goodreads username (e.g. `wbollock`) instead of a full shelf URL.
+
+**How it works:**
+- Add a toggle or auto-detect on the search input: if the value doesn't look like a URL, treat it as a username
+- Resolve username → user ID via Goodreads (their profile URLs are `/user/show/<id>-<slug>` or can be found by scraping `goodreads.com/<username>`)
+- Once user ID is resolved, construct the shelf RSS URL (`goodreads.com/review/list/<id>.rss?shelf=to-read`) as today
+- Consider caching username → ID resolution in SQLite so repeat searches are fast
+- UI: show a small hint like "or just enter your username" below the URL input
+
+**Open questions:**
+- Goodreads doesn't have an official username→ID API; need to scrape `goodreads.com/<username>` and parse the canonical user ID from the page
+- Rate limiting / bot detection risk
+
+---
+
+### 2. Goodreads-Native Shelf Access (OverReader Independence)
+**Goal:** Remove the dependency on OverReader URLs entirely. Users should be able to get their Goodreads shelf into BenReadin without needing to go through overreader.com first.
+
+**Current problem:** The app was bootstrapped to accept OverReader URLs as a convenience, but this creates a hard dependency on a third-party site that could go down or change its URL format.
+
+**Approaches (in order of preference):**
+
+1. **Username input** (see feature #1 above) — simplest UX, just type your name
+2. **Goodreads shelf RSS URL** (current) — still supported, paste the raw RSS link directly
+3. **Goodreads profile URL** — paste `goodreads.com/user/show/12345` or `goodreads.com/<username>` and we resolve it
+4. **Goodreads shelf page URL** — paste the full `goodreads.com/review/list/12345?shelf=to-read` page URL (not the RSS variant) and we normalize it internally
+5. **Goodreads OAuth (stretch)** — if Goodreads ever re-opens API access; would allow shelf selection UI, private shelves, etc.
+
+**What to keep from OverReader compat:**
+- Parsing OverReader URLs to pre-fill libraries is still a nice convenience and can stay
+- But it should be one input path among many, not the recommended one
+
+**URL parsing logic changes:**
+- `urlparse.go` already handles some cases — expand it to detect and normalize all the Goodreads URL variants above
+- Show a clear error if none of the patterns match, with examples of valid inputs
+
+---
+
+### 3. Switchable Book Source
+**Goal:** Let users pick their shelf source — not just Goodreads/OverReader URLs.
+
+**Potential sources:**
+- Goodreads (current, via RSS)
+- Hardcover.app (has a public GraphQL API)
+- TheStoryGraph (no public API; would need scraping or user CSV export)
+- Manual ISBN list (paste a list of ISBNs or titles)
+
+**UI approach:**
+- Source selector tabs or a dropdown above the URL/username input (e.g. `Goodreads | Hardcover | StoryGraph | Manual`)
+- Input label and placeholder update depending on selected source
+- Each source implements the same internal `[]Book` interface so downstream processing (Libby check, Amazon prices) is unchanged
+
+**Backend approach:**
+- Abstract the current Goodreads fetcher behind a `ShelfFetcher` interface
+- Add a `source` query param to `/api/search` (e.g. `source=goodreads|hardcover|manual`)
+- Implement a `HardcoverFetcher` (GraphQL, needs API key or public endpoint)
+- Implement a `ManualFetcher` (accept a newline-separated ISBN/title list)
 
 ---
 

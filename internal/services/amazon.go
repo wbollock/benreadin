@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wbollock/shelfprice/internal/models"
+	"github.com/wbollock/benreadin/internal/models"
 )
 
 const (
