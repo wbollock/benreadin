@@ -20,8 +20,8 @@ const (
 	openLibrarySearch = "https://openlibrary.org/search.json"
 	openLibraryCover  = "https://covers.openlibrary.org/b/isbn/%s-L.jpg"
 
-	// Open Library allows ~3 req/sec with a User-Agent set.
-	olConcurrency = 3
+	// Open Library allows up to ~6 req/sec with a User-Agent set.
+	olConcurrency = 6
 )
 
 // OpenLibraryService enriches books with ISBN-13 and cover images.

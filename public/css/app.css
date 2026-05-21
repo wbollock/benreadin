@@ -1129,5 +1129,27 @@ input::placeholder { color: var(--text-subtle); }
   .book-cover img { width: 64px; height: 96px; }
   .book-cover-placeholder { width: 64px; height: 96px; }
   .recs-grid { grid-template-columns: 1fr; }
-  .filter-bar { gap: 10px; }
+  .filter-bar { gap: 10px; flex-direction: column; align-items: flex-start; }
+  .filter-group { width: 100%; }
+  .filter-chips {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    max-width: 100%;
+  }
+  .filter-group[style*="margin-left:auto"] { margin-left: 0 !important; }
+  /* Book title row: stack rating below title on small screens */
+  .book-title-row { flex-direction: column; gap: 4px; }
+  /* Header: shrink button labels */
+  .site-header-inner { gap: 6px; }
+  .btn-secondary, .btn-copy-link { padding: 6px 10px; font-size: .75rem; }
+}
+
+@media (max-width: 480px) {
+  /* Hide verbose header button labels, keep icons only */
+  .site-header-inner .btn-text { display: none; }
+  /* Compact card actions on very small screens */
+  .card-actions-group { gap: 4px; }
+  .btn-secondary.btn-sm { padding: 5px 8px; font-size: .72rem; }
 }

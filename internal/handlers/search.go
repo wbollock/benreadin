@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -8,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wbollock/benreadin/internal/models"
 	"github.com/wbollock/benreadin/internal/services"
@@ -100,13 +102,16 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
+	var sseMu sync.Mutex
 	sendEvent := func(eventType string, data interface{}) {
 		b, err := json.Marshal(data)
 		if err != nil {
 			return
 		}
+		sseMu.Lock()
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, string(b))
 		flusher.Flush()
+		sseMu.Unlock()
 	}
 
 	ctx := r.Context()
@@ -155,6 +160,27 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		Message: fmt.Sprintf("Found %d books — checking availability...", len(books)),
 	})
 
+	// Heartbeat: keeps the SSE connection alive through proxies that close idle connections.
+	streamDone := make(chan struct{})
+	defer close(streamDone)
+	go func() {
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				sseMu.Lock()
+				fmt.Fprintf(w, ": ping\n\n")
+				flusher.Flush()
+				sseMu.Unlock()
+			case <-streamDone:
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	// Fan-out: enrich + check each book concurrently.
 	// Open Library enrichment and OverDrive/Amazon checks are pipelined per book
 	// so we don't wait for all enrichment before starting availability checks.
@@ -192,13 +218,19 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Cache miss — run the full pipeline.
+			// Use a per-book timeout so a slow/hung API call never blocks the whole stream.
+			bookCtx, bookCancel := context.WithTimeout(ctx, 30*time.Second)
+			defer bookCancel()
 
 			// Enrich this book (Open Library ISBN13 + cover)
-			enriched := h.openLibrary.Enrich(ctx, []models.Book{book})
+			enriched := h.openLibrary.Enrich(bookCtx, []models.Book{book})
 			book = enriched[0]
 
 			// Library availability fan-out
 			libResults := make([]models.LibraryResult, len(libraries))
+			for i := range libResults {
+				libResults[i] = models.LibraryResult{LibraryKey: libraries[i], Status: models.StatusNotFound}
+			}
 			var libWg sync.WaitGroup
 			for i, lib := range libraries {
 				lib := lib
@@ -206,12 +238,12 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 				libWg.Add(1)
 				go func() {
 					defer libWg.Done()
-					if err := h.odSem.Acquire(ctx, 1); err != nil {
+					if err := h.odSem.Acquire(bookCtx, 1); err != nil {
 						return
 					}
 					defer h.odSem.Release(1)
 
-					lr, err := h.overdrive.CheckAvailability(ctx, book, lib)
+					lr, err := h.overdrive.CheckAvailability(bookCtx, book, lib)
 					if err != nil {
 						slog.Warn("overdrive check failed", "book", book.Title, "library", lib, "err", err)
 						lr = models.LibraryResult{LibraryKey: lib, Status: models.StatusNotFound}
@@ -223,8 +255,8 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 			// Amazon pricing
 			var azResult models.AmazonResult
-			if err := h.azSem.Acquire(ctx, 1); err == nil {
-				azResult, err = h.amazon.GetPrices(ctx, book)
+			if err := h.azSem.Acquire(bookCtx, 1); err == nil {
+				azResult, err = h.amazon.GetPrices(bookCtx, book)
 				h.azSem.Release(1)
 				if err != nil {
 					slog.Warn("amazon prices failed", "book", book.Title, "err", err)
@@ -241,8 +273,8 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 				gutenbergResult: gbResult,
 			}
 
-			// Store to book cache for future searches.
-			if book.GoodreadsID != "" {
+			// Only cache if the book context completed successfully (not timed out).
+			if bookCtx.Err() == nil && book.GoodreadsID != "" {
 				if err := h.cache.SetBook(book.GoodreadsID, libsKey, BookEvent{
 					Book:            res.book,
 					LibraryResults:  res.libraryResults,

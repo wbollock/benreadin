@@ -204,6 +204,12 @@
     acIndex = -1;
   }
 
+  // ---- Default library ----
+  // Pre-populate Free Library of Philadelphia if no libraries are set yet.
+  if (libraries.length === 0) {
+    addLibrary('freelibrary', 'Free Library of Philadelphia');
+  }
+
   // ---- URL paste detection: auto-fill libraries from OverReader URL ----
 
   urlInput.addEventListener('paste', e => {

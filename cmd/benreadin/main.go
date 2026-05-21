@@ -175,7 +175,7 @@ func loadConfig() config {
 		libraryTTL:        envInt64("CACHE_TTL_LIBRARY_SECONDS", 7200),
 		amazonTTL:         envInt64("CACHE_TTL_AMAZON_SECONDS", 86400),
 		bookTTL:           envInt64("CACHE_TTL_BOOK_SECONDS", 7200),
-		odConcurrency:     envInt64("CONCURRENCY_OVERDRIVE", 5),
+		odConcurrency:     envInt64("CONCURRENCY_OVERDRIVE", 10),
 		azConcurrency:     envInt64("CONCURRENCY_AMAZON", 3),
 		amazonAccessKey:   os.Getenv("AMAZON_ACCESS_KEY"),
 		amazonSecretKey:   os.Getenv("AMAZON_SECRET_KEY"),
