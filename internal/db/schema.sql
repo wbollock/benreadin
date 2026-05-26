@@ -47,6 +47,25 @@ CREATE TABLE IF NOT EXISTS book_cache (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_book_cache ON book_cache(goodreads_id, libraries);
 
+-- Seed: well-known libraries so autocomplete works on a fresh install.
+-- INSERT OR IGNORE so re-running migrations is safe.
+INSERT OR IGNORE INTO libraries (key, name, website) VALUES
+  ('nypl',      'New York Public Library',          'https://www.nypl.org/'),
+  ('bklynlib',  'Brooklyn Public Library',          'https://www.bklynlibrary.org/'),
+  ('qpl',       'Queens Public Library',            'https://www.queenslibrary.org/'),
+  ('lapl',      'Los Angeles Public Library',       'https://www.lapl.org/'),
+  ('sfpl',      'San Francisco Public Library',     'https://sfpl.org/'),
+  ('spl',       'Seattle Public Library',           'https://www.spl.org/'),
+  ('kcls',      'King County Library System',       'https://kcls.org/'),
+  ('chipublib', 'Chicago Public Library',           'https://www.chipublib.org/'),
+  ('multcolib', 'Multnomah County Library',         'https://multcolib.org/'),
+  ('dcpl',      'DC Public Library',                'https://dclibrary.org/'),
+  ('clevnet',   'CLEVNET',                          'https://www.cpl.org/'),
+  ('hcpl',      'Harris County Public Library',     'https://hcpl.net/'),
+  ('tpl',       'Toronto Public Library',           'https://www.torontopubliclibrary.ca/'),
+  ('vpl',       'Vancouver Public Library',         'https://www.vpl.ca/'),
+  ('freelibrary','Free Library of Philadelphia',    'https://www.freelibrary.org/');
+
 -- Shortlinks: shareable tokens that encode a search URL + library set
 CREATE TABLE IF NOT EXISTS shortlinks (
   id         INTEGER PRIMARY KEY,

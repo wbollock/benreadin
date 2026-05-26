@@ -1,0 +1,22 @@
+[Unit]
+Description=BenReadin – Goodreads shelf to Libby availability checker
+After=network.target
+
+[Service]
+Type=simple
+User=benreadin
+Group=benreadin
+
+WorkingDirectory=/opt/benreadin
+ExecStart=/opt/benreadin/benreadin
+EnvironmentFile=/opt/benreadin/.env
+
+Restart=on-failure
+RestartSec=5
+
+# Harden a bit
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -151,7 +151,7 @@ function buildBookCard(event, show) {
   const bestSt = statuses.reduce((best, s) => (statusPriority[s] ?? 3) < (statusPriority[best] ?? 3) ? s : best, statuses[0] || 'not_found');
 
   return `
-    <article class="book-card${show === false ? ' hidden' : ''}" data-status="${escHtml(bestSt)}">
+    <article class="book-card${show === false ? ' hidden' : ''}" data-status="${escHtml(bestSt)}" data-grid="${escHtml(book.goodreads_id || '')}">
       <div class="book-cover">${cover}</div>
       <div class="book-info">
         <div>
@@ -166,6 +166,77 @@ function buildBookCard(event, show) {
         ${libRows ? `<div class="library-list">${libRows}</div>` : ''}
         ${pricePills}
         ${actionButtons}
+      </div>
+    </article>
+  `;
+}
+
+// buildSkeletonCard renders a generic shimmer placeholder shown while the
+// Goodreads shelf is being fetched. index varies the widths so cards look natural.
+function buildSkeletonCard(_, index) {
+  const titles  = ['72%','65%','80%','55%','68%','75%'];
+  const authors = ['48%','55%','40%','58%','45%','52%'];
+  const badges  = ['88%','78%','92%','70%','85%','75%'];
+  const i = (index || 0) % titles.length;
+  return `
+    <article class="book-card book-card-skeleton" aria-hidden="true">
+      <div class="book-cover">
+        <div class="skeleton" style="width:76px;height:114px;border-radius:var(--radius-sm);flex-shrink:0;"></div>
+      </div>
+      <div class="book-info" style="gap:12px;">
+        <div>
+          <div class="skeleton" style="height:15px;width:${titles[i]};margin-bottom:8px;border-radius:4px;"></div>
+          <div class="skeleton" style="height:13px;width:${authors[i]};border-radius:4px;"></div>
+        </div>
+        <div class="skeleton" style="height:24px;width:${badges[i]};border-radius:100px;"></div>
+        <div class="skeleton" style="height:24px;width:${badges[(i+2)%titles.length]};border-radius:100px;"></div>
+      </div>
+    </article>
+  `;
+}
+
+// buildStubCard renders an immediate placeholder card before availability data
+// arrives. index is used for a staggered cascade animation.
+function buildStubCard(book, libraryKeys, index) {
+  const cover = book.cover_url
+    ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'book-cover-placeholder\\'>📚</div>'">`
+    : `<div class="book-cover-placeholder">📚</div>`;
+
+  const avgRating = book.average_rating
+    ? `<span class="rating-avg" title="Goodreads average rating">★ ${book.average_rating.toFixed(2)}</span>`
+    : '';
+  const userRating = book.user_rating
+    ? `<span class="rating-user" title="Your Goodreads rating">${'★'.repeat(book.user_rating)}${'☆'.repeat(5 - book.user_rating)}</span>`
+    : '';
+  const ratingStr = (avgRating || userRating)
+    ? `<div class="book-rating-row">${avgRating}${userRating}</div>`
+    : '';
+
+  const stubRows = (libraryKeys || []).map(k => {
+    const name = typeof window.getLibName === 'function' ? window.getLibName(k) : k;
+    return `<div class="library-row">
+      <span class="lib-label">${escHtml(name)}</span>
+      <span class="badge badge-checking">Checking…</span>
+    </div>`;
+  }).join('');
+
+  // Cascade: first 20 books stagger at 25ms each, rest clamp to 500ms so the
+  // grid feels like a waterfall rather than all appearing instantly or too slowly.
+  const delay = index !== undefined ? Math.min(index * 25, 500) : 0;
+  const delayStyle = delay > 0 ? `animation-delay:${delay}ms;` : '';
+
+  return `
+    <article class="book-card book-card--stub" data-grid="${escHtml(book.goodreads_id || '')}" style="${delayStyle}">
+      <div class="book-cover">${cover}</div>
+      <div class="book-info">
+        <div>
+          <div class="book-title-row">
+            <div class="book-title">${escHtml(book.title)}</div>
+            ${ratingStr}
+          </div>
+          <div class="book-author">${escHtml(book.author)}</div>
+        </div>
+        ${stubRows ? `<div class="library-list">${stubRows}</div>` : ''}
       </div>
     </article>
   `;

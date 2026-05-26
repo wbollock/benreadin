@@ -19,6 +19,9 @@
   let completedBooks = 0;
   // Multi-select filters: a Set of active filter keys. Empty = show all.
   const activeFilters = new Set();
+  // AND vs OR logic when multiple filters are active.
+  const FILTER_MODE_KEY = 'benreadin_filter_mode';
+  let filterMode = localStorage.getItem(FILTER_MODE_KEY) || 'or';
   // Persist sort preference in localStorage; default to available_first.
   const SORT_KEY = 'benreadin_sort';
   let activeSort = localStorage.getItem(SORT_KEY) || 'available_first';
@@ -54,16 +57,27 @@
     return waits.length ? Math.min(...waits) : Infinity;
   }
 
-  function filterBook(event) {
-    if (activeFilters.size === 0) return true; // nothing selected = show all
+  function bookMatchesFilter(event, filter) {
     const status = bestStatus(event.library_results);
-    // Book passes if it matches ANY active filter (OR logic).
-    if (activeFilters.has('available') && status === 'available') return true;
-    if (activeFilters.has('wait') && status === 'wait') return true;
-    if (activeFilters.has('not_found') && (status === 'not_found' || status === 'unavailable')) return true;
-    if (activeFilters.has('kindle') && (event.library_results || []).some(lr => lr.has_kindle)) return true;
-    if (activeFilters.has('gutenberg') && !!event.gutenberg_result) return true;
+    if (filter === 'available') {
+      // True only when at least one library has it available AND no library has a wait.
+      const hasAnyWait = (event.library_results || []).some(lr => lr.status === 'wait');
+      return status === 'available' && !hasAnyWait;
+    }
+    if (filter === 'wait') return status === 'wait';
+    if (filter === 'not_found') return status === 'not_found' || status === 'unavailable';
+    if (filter === 'kindle') return (event.library_results || []).some(lr => lr.has_kindle);
+    if (filter === 'gutenberg') return !!event.gutenberg_result;
     return false;
+  }
+
+  function filterBook(event) {
+    if (activeFilters.size === 0) return true;
+    const filters = [...activeFilters];
+    if (filterMode === 'and') {
+      return filters.every(f => bookMatchesFilter(event, f));
+    }
+    return filters.some(f => bookMatchesFilter(event, f));
   }
 
   function sortedBooks() {
@@ -165,10 +179,17 @@
   function updateCount(visibleCount) {
     if (totalBooks > 0) {
       resultsHeader.style.display = 'block';
-      if (visibleCount !== undefined && visibleCount !== allBooks.length) {
-        resultsCount.textContent = `(${visibleCount} of ${allBooks.length})`;
+      const ready = allBooks.length;
+      const streaming = ready < totalBooks;
+      if (streaming) {
+        // Show how many have been checked out of total while stubs are filling in.
+        resultsCount.textContent = visibleCount !== undefined && visibleCount !== ready
+          ? `(${visibleCount} shown — ${ready} / ${totalBooks} checked)`
+          : `(${ready} / ${totalBooks} checked)`;
+      } else if (visibleCount !== undefined && visibleCount !== ready) {
+        resultsCount.textContent = `(${visibleCount} of ${ready})`;
       } else {
-        resultsCount.textContent = `(${allBooks.length})`;
+        resultsCount.textContent = `(${ready})`;
       }
     }
   }
@@ -176,7 +197,6 @@
   // ---- Filter / sort event listeners ----
 
   function syncFilterUI() {
-    const allBtn = document.querySelector('[data-filter="all"]');
     filterBtns.forEach(btn => {
       if (btn.dataset.filter === 'all') {
         btn.classList.toggle('active', activeFilters.size === 0);
@@ -184,6 +204,14 @@
         btn.classList.toggle('active', activeFilters.has(btn.dataset.filter));
       }
     });
+    const modeToggle = document.getElementById('filter-mode-toggle');
+    if (modeToggle) {
+      // Only show when 2+ filters are active.
+      modeToggle.style.visibility = activeFilters.size >= 2 ? 'visible' : 'hidden';
+      modeToggle.querySelectorAll('.filter-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === filterMode);
+      });
+    }
   }
 
   filterBtns.forEach(btn => {
@@ -208,11 +236,78 @@
     renderGrid();
   });
 
+  document.getElementById('filter-mode-toggle').addEventListener('click', e => {
+    const btn = e.target.closest('.filter-mode-btn');
+    if (!btn) return;
+    filterMode = btn.dataset.mode;
+    localStorage.setItem(FILTER_MODE_KEY, filterMode);
+    syncFilterUI();
+    renderGrid();
+  });
+
   // ---- SSE ----
 
   const params = new URLSearchParams(window.location.search);
   const shelfUrl  = params.get('url');
   const libraries = params.getAll('libraries');
+
+  // ---- Client-side results cache (1-hour TTL) ----
+
+  const RESULTS_CACHE_STORAGE_KEY = 'benreadin_results_v1';
+  const RESULTS_CACHE_TTL = 60 * 60 * 1000;
+
+  function buildCacheKey() {
+    return shelfUrl + '|' + [...libraries].sort().join(',');
+  }
+
+  function getCachedResults() {
+    try {
+      const all = JSON.parse(localStorage.getItem(RESULTS_CACHE_STORAGE_KEY) || '{}');
+      const entry = all[buildCacheKey()];
+      if (!entry || Date.now() - entry.timestamp > RESULTS_CACHE_TTL) return null;
+      return entry;
+    } catch { return null; }
+  }
+
+  function saveResultsToCache(books) {
+    try {
+      const all = JSON.parse(localStorage.getItem(RESULTS_CACHE_STORAGE_KEY) || '{}');
+      all[buildCacheKey()] = { books, timestamp: Date.now() };
+      // Evict oldest entries if we have too many
+      const keys = Object.keys(all);
+      if (keys.length > 15) {
+        keys.sort((a, b) => all[a].timestamp - all[b].timestamp);
+        delete all[keys[0]];
+      }
+      localStorage.setItem(RESULTS_CACHE_STORAGE_KEY, JSON.stringify(all));
+    } catch { /* quota exceeded — non-critical */ }
+  }
+
+  function clearCachedResults() {
+    try {
+      const all = JSON.parse(localStorage.getItem(RESULTS_CACHE_STORAGE_KEY) || '{}');
+      delete all[buildCacheKey()];
+      localStorage.setItem(RESULTS_CACHE_STORAGE_KEY, JSON.stringify(all));
+    } catch {}
+  }
+
+  function loadFromCache() {
+    const entry = getCachedResults();
+    if (!entry || !entry.books || entry.books.length === 0) return false;
+
+    entry.books.forEach(b => allBooks.push(b));
+    totalBooks = allBooks.length;
+
+    renderGrid();
+    resultsHeader.style.display = 'block';
+
+    const ageMin = Math.round((Date.now() - entry.timestamp) / 60000);
+    const ageStr = ageMin < 1 ? 'just now' : `${ageMin} min ago`;
+    setProgress(100, `Showing saved results from ${ageStr} — click Refresh to update`);
+    setTimeout(() => { document.getElementById('status-area').style.opacity = '0.4'; }, 3000);
+    document.getElementById('recs-trigger').style.display = 'block';
+    return true;
+  }
 
   // Build key→name map from URL params (set by search page).
   const urlLibNames = {};
@@ -246,8 +341,23 @@
 
   // Sync the select element to the persisted sort value.
   sortSelect.value = activeSort;
+  // Sync the AND/OR toggle to the persisted filter mode.
+  syncFilterUI();
 
   let activeES = null;
+  let streamDone = false;
+  let skeletonsCleared = false;
+
+  function showSkeletons(count) {
+    bookGrid.insertAdjacentHTML('beforeend',
+      Array.from({length: count}, buildSkeletonCard).join(''));
+  }
+
+  function clearSkeletons() {
+    if (skeletonsCleared) return;
+    skeletonsCleared = true;
+    bookGrid.querySelectorAll('.book-card-skeleton').forEach(el => el.remove());
+  }
 
   function resetState() {
     allBooks.length = 0;
@@ -259,6 +369,7 @@
     recsPanel.style.display = 'none';
     recsGrid.innerHTML = '';
     document.getElementById('status-area').style.opacity = '1';
+    progressBar.classList.remove('indeterminate');
     const copyBtn = document.getElementById('copy-link-btn');
     if (copyBtn) copyBtn.style.display = 'none';
     document.getElementById('recs-trigger').style.display = 'none';
@@ -268,8 +379,15 @@
 
   function startStream(refresh) {
     if (activeES) activeES.close();
+    streamDone = false;
+    skeletonsCleared = false;
     resetState();
-    setProgress(5, 'Connecting...');
+
+    // Show skeleton cards immediately — before the SSE connection even opens —
+    // so the user sees a populated grid rather than a blank page.
+    showSkeletons(12);
+    progressBar.classList.add('indeterminate');
+    setProgress(0, 'Fetching your shelf…');
 
     const p = new URLSearchParams(baseParams);
     if (refresh) p.set('refresh', 'true');
@@ -277,51 +395,78 @@
 
     es.addEventListener('progress', e => {
       const data = JSON.parse(e.data);
-      if (data.total) totalBooks = data.total;
+      if (data.total) {
+        totalBooks = data.total;
+        // Switch from sweeping indeterminate bar to a real percentage bar
+        // now that we know how many books there are.
+        progressBar.classList.remove('indeterminate');
+      }
       if (data.completed !== undefined) completedBooks = data.completed;
 
       if (totalBooks > 0 && completedBooks > 0) {
         const pct = 5 + (completedBooks / totalBooks) * 90;
-        setProgress(pct, `Checking book ${completedBooks} of ${totalBooks}...`);
+        setProgress(pct, `Checking ${completedBooks} of ${totalBooks}…`);
       } else if (data.message) {
-        setProgress(10, data.message);
+        setProgress(0, data.message);
       }
     });
 
+    // book_stubs: single batch event sent the instant the Goodreads shelf is
+    // fetched. Renders the entire book list at once (one DOM operation) with a
+    // staggered cascade animation so the grid floods in smoothly.
+    es.addEventListener('book_stubs', e => {
+      clearSkeletons();
+      const {books: stubs} = JSON.parse(e.data);
+      bookGrid.insertAdjacentHTML('beforeend',
+        stubs.map((book, i) => buildStubCard(book, libraries, i)).join(''));
+      resultsHeader.style.display = 'block';
+    });
+
     es.addEventListener('book', e => {
+      clearSkeletons();
       const event = JSON.parse(e.data);
       allBooks.push(event);
-      // Append incrementally during streaming.
-      // For available_first sort, insert available books before non-available ones
-      // so the live order roughly matches the final sorted order.
+
+      const grId = event.book && event.book.goodreads_id;
+      const stubEl = grId ? bookGrid.querySelector(`[data-grid="${CSS.escape(grId)}"]`) : null;
+
       if (filterBook(event)) {
-        const status = bestStatus(event.library_results);
         const html = buildBookCard(event, true);
-        if (activeSort === 'available_first' && status !== 'available' && status !== 'wait') {
-          // Non-available: always append at the end.
-          bookGrid.insertAdjacentHTML('beforeend', html);
-        } else if (activeSort === 'available_first' && status === 'available') {
-          // Available: insert before the first non-available card so available
-          // books cluster at the top during streaming.
-          const firstNonAvail = bookGrid.querySelector('.book-card[data-status="wait"], .book-card[data-status="unavailable"], .book-card[data-status="not_found"]');
-          if (firstNonAvail) {
-            firstNonAvail.insertAdjacentHTML('beforebegin', html);
+        if (stubEl) {
+          // Replace the stub card in-place with the full card.
+          stubEl.outerHTML = html;
+        } else {
+          // Cache hit (no stub was sent): use sort-aware insertion.
+          const status = bestStatus(event.library_results);
+          if (activeSort === 'available_first' && status === 'available') {
+            const firstNonAvail = bookGrid.querySelector('.book-card[data-status="wait"], .book-card[data-status="unavailable"], .book-card[data-status="not_found"]');
+            if (firstNonAvail) {
+              firstNonAvail.insertAdjacentHTML('beforebegin', html);
+            } else {
+              bookGrid.insertAdjacentHTML('beforeend', html);
+            }
           } else {
             bookGrid.insertAdjacentHTML('beforeend', html);
           }
-        } else {
-          bookGrid.insertAdjacentHTML('beforeend', html);
         }
+      } else if (stubEl) {
+        // Book doesn't pass current filter — remove the stub.
+        stubEl.remove();
       }
-      const visibleCount = bookGrid.querySelectorAll('.book-card').length;
+
+      // Count only completed (non-stub) cards for the visible count.
+      const visibleCount = bookGrid.querySelectorAll('.book-card:not(.book-card--stub)').length;
       updateCount(visibleCount < allBooks.length ? visibleCount : undefined);
       resultsHeader.style.display = 'block';
     });
 
     es.addEventListener('done', e => {
       const data = JSON.parse(e.data);
+      streamDone = true;
       setProgress(100, data.message || 'Done');
       es.close();
+      // Save results to client cache so return visits render instantly.
+      saveResultsToCache(allBooks.slice());
       // One final render to apply exact sort order and correct counts.
       renderGrid();
       // Scroll to top so user sees the sorted results from the beginning.
@@ -346,13 +491,17 @@
     });
 
     es.onerror = () => {
-      if (es.readyState === EventSource.CLOSED) return;
+      // Ignore errors after the stream completed normally — the browser's
+      // EventSource auto-reconnect fires onerror when the server closes the
+      // connection after sending 'done', but we don't want to show an error.
+      if (streamDone || es.readyState === EventSource.CLOSED) return;
       showError('Connection lost. Please try again.');
       es.close();
     };
   }
 
   document.getElementById('refresh-btn').addEventListener('click', () => {
+    clearCachedResults();
     startStream(true);
   });
 
@@ -467,7 +616,10 @@
     }
   });
 
-  startStream(false);
+  // Load from client cache for instant results; fall back to SSE.
+  if (!loadFromCache()) {
+    startStream(false);
+  }
 
   // ---- Shortlink ----
 

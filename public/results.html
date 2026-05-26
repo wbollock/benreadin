@@ -49,7 +49,7 @@
         <button id="copy-link-btn" class="btn-copy-link" style="display:none;" title="Copy shareable link to this search">
           <span class="btn-text">Copy link</span>
         </button>
-        <button id="refresh-btn" class="btn-secondary" title="Force re-fetch ignoring cached results">
+        <button id="refresh-btn" class="btn-secondary" title="Hard refresh — clear all caches and re-fetch from scratch">
           ↺ <span class="btn-text">Refresh</span>
         </button>
         <a href="/" class="btn-secondary" title="New search">
@@ -105,6 +105,10 @@
               <button class="filter-chip" data-filter="not_found">Not on Libby</button>
               <button class="filter-chip filter-chip-kindle" data-filter="kindle">Kindle delivery</button>
               <button class="filter-chip filter-chip-gutenberg" data-filter="gutenberg">Free (Gutenberg)</button>
+            </div>
+            <div class="filter-mode-toggle" id="filter-mode-toggle" title="Match any selected filter (OR) or all selected filters (AND)">
+              <button class="filter-mode-btn" data-mode="or">Any</button>
+              <button class="filter-mode-btn" data-mode="and">All</button>
             </div>
           </div>
           <!-- Sort -->

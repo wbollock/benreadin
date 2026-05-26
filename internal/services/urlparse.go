@@ -14,12 +14,21 @@ type ParsedShelfURL struct {
 	LookFor   []string // e.g. ["e", "a"] for ebooks/audiobooks
 }
 
-// ParseShelfURL accepts either:
+// ParseShelfURL accepts:
 //
 //	https://overreader.com/overdrive/{libraries}/{source}/{userId}/shelf/{shelf}?lookfor=e,a
 //	https://www.goodreads.com/review/list/{USER_ID}?shelf={SHELF}
+//	https://www.goodreads.com/user/show/{USER_ID}[-slug]   (profile URL)
+//	bare numeric Goodreads user ID (e.g. "12345678")
 func ParseShelfURL(raw string) (*ParsedShelfURL, error) {
-	u, err := url.Parse(strings.TrimSpace(raw))
+	raw = strings.TrimSpace(raw)
+
+	// Bare numeric user ID — treat as Goodreads user ID, default to to-read shelf.
+	if isNumericID(raw) {
+		return &ParsedShelfURL{UserID: raw, Shelf: "to-read"}, nil
+	}
+
+	u, err := url.Parse(raw)
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL: %w", err)
 	}
@@ -30,8 +39,21 @@ func ParseShelfURL(raw string) (*ParsedShelfURL, error) {
 	case "www.goodreads.com", "goodreads.com":
 		return parseGoodreadsURL(u)
 	default:
-		return nil, fmt.Errorf("unsupported URL host %q — paste an OverReader or Goodreads shelf URL", u.Host)
+		return nil, fmt.Errorf("unsupported URL host %q — paste a Goodreads shelf/profile URL or OverReader URL", u.Host)
 	}
+}
+
+// isNumericID returns true if s is a non-empty string of digits only.
+func isNumericID(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // parseOverReaderURL parses:
@@ -63,12 +85,28 @@ func parseOverReaderURL(u *url.URL) (*ParsedShelfURL, error) {
 }
 
 // parseGoodreadsURL parses:
-// /review/list/{USER_ID}?shelf={SHELF}
+//
+//	/review/list/{USER_ID}?shelf={SHELF}          (shelf URL)
+//	/user/show/{USER_ID}[-slug]                   (profile URL)
 func parseGoodreadsURL(u *url.URL) (*ParsedShelfURL, error) {
 	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-	// Expected: ["review", "list", userId]
+
+	// Profile URL: /user/show/{id} or /user/show/{id}-{slug}
+	if len(parts) >= 3 && parts[0] == "user" && parts[1] == "show" {
+		idPart := parts[2]
+		// Strip optional "-username" suffix so "12345678-wbollock" → "12345678"
+		if i := strings.IndexByte(idPart, '-'); i > 0 {
+			idPart = idPart[:i]
+		}
+		if idPart == "" {
+			return nil, fmt.Errorf("could not extract user ID from Goodreads profile URL")
+		}
+		return &ParsedShelfURL{UserID: idPart, Shelf: "to-read"}, nil
+	}
+
+	// Shelf URL: /review/list/{USER_ID}?shelf={SHELF}
 	if len(parts) < 3 || parts[0] != "review" || parts[1] != "list" {
-		return nil, fmt.Errorf("unrecognised Goodreads URL path: %s", u.Path)
+		return nil, fmt.Errorf("unrecognised Goodreads URL — paste your profile URL (goodreads.com/user/show/…) or shelf URL (goodreads.com/review/list/…)")
 	}
 
 	shelf := u.Query().Get("shelf")

@@ -63,22 +63,29 @@
           <form id="search-form" novalidate>
             <div class="form-group">
               <label for="shelf-url">
-                Goodreads shelf URL
-                <span class="label-hint">or OverReader URL</span>
+                Goodreads URL or user ID
+                <span class="label-hint">profile URL, shelf URL, or numeric ID</span>
               </label>
               <input
-                type="url"
+                type="text"
                 id="shelf-url"
                 name="url"
-                placeholder="https://www.goodreads.com/review/list/12345?shelf=to-read"
+                placeholder="https://www.goodreads.com/user/show/12345678-you"
                 autocomplete="off"
                 spellcheck="false"
                 required
               >
+              <div class="url-example">
+                <span class="url-example-label">e.g.</span>
+                <button type="button" class="url-example-btn" id="example-shelf-btn">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                  William's to-read shelf
+                </button>
+              </div>
             </div>
 
             <div class="form-group">
-              <label>Libraries <span class="label-hint">type to search, add up to 15</span></label>
+              <label>Libraries <span class="label-hint">click to browse, or type a name/key</span></label>
               <div class="library-input-wrap">
                 <div class="library-chips" id="library-chips" tabindex="0">
                   <input
@@ -90,6 +97,14 @@
                   >
                 </div>
                 <div class="autocomplete-list" id="autocomplete-list"></div>
+              </div>
+              <div class="url-example" style="margin-top:7px;">
+                <span class="url-example-label">key in your Libby URL, e.g.</span>
+                <code style="font-size:.75rem;opacity:.6;color:rgba(255,255,255,.8);">nypl</code>
+                <span class="url-example-label">·</span>
+                <code style="font-size:.75rem;opacity:.6;color:rgba(255,255,255,.8);">lapl</code>
+                <span class="url-example-label">·</span>
+                <code style="font-size:.75rem;opacity:.6;color:rgba(255,255,255,.8);">tpl</code>
               </div>
               <input type="hidden" id="libraries-hidden" name="libraries">
             </div>
@@ -103,8 +118,9 @@
           </form>
         </div>
 
-        <p style="margin-top:20px; font-size:.8rem; color:rgba(255,255,255,.45);">
-          Tip: paste an OverReader URL directly and libraries are filled in automatically.
+        <p style="margin-top:20px; font-size:.8rem; color:rgba(255,255,255,.45); line-height:1.7;">
+          Accepts your Goodreads profile URL (<code style="opacity:.7;font-size:.85em;">goodreads.com/user/show/12345678-you</code>),
+          shelf URL, bare numeric user ID, or an OverReader URL (libraries fill in automatically).
         </p>
       </div>
     </section>

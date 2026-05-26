@@ -30,6 +30,13 @@ type BookEvent struct {
 	GutenbergResult *models.GutenbergResult `json:"gutenberg_result,omitempty"`
 }
 
+// BookStubsEvent is sent as a single batch immediately after the Goodreads
+// shelf is fetched, so the client can render the full list of placeholder cards
+// at once before any availability checks complete.
+type BookStubsEvent struct {
+	Books []models.Book `json:"books"`
+}
+
 // ProgressEvent reports overall search progress.
 type ProgressEvent struct {
 	Total     int    `json:"total"`
@@ -181,9 +188,6 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Fan-out: enrich + check each book concurrently.
-	// Open Library enrichment and OverDrive/Amazon checks are pipelined per book
-	// so we don't wait for all enrichment before starting availability checks.
 	type result struct {
 		book            models.Book
 		libraryResults  []models.LibraryResult
@@ -191,42 +195,56 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		gutenbergResult *models.GutenbergResult
 	}
 
-	resultCh := make(chan result, len(books))
-	var wg sync.WaitGroup
-
 	libsKey := librariesCacheKey(libraries)
 	hardRefresh := r.URL.Query().Get("refresh") == "true"
 
+	// Phase 1: send the entire book list as a single batch stub event so the
+	// client can render all placeholder cards at once — no drip, no waiting.
+	sendEvent("book_stubs", BookStubsEvent{Books: books})
+
+	// Phase 2: resolve cache hits immediately and collect misses for the pipeline.
+	completedCount := 0
+	var toFetch []models.Book
 	for _, book := range books {
+		if !hardRefresh && book.GoodreadsID != "" {
+			var cached BookEvent
+			if hit, _ := h.cache.GetBook(book.GoodreadsID, libsKey, &cached); hit {
+				slog.Debug("book cache hit", "book", book.Title)
+				completedCount++
+				sendEvent("book", cached)
+				sendEvent("progress", ProgressEvent{Total: len(books), Completed: completedCount})
+				continue
+			}
+		}
+		toFetch = append(toFetch, book)
+	}
+
+	// Phase 3: enrich + check each cache-miss book concurrently, replacing their stubs.
+	// OL enrichment and OD availability checks run in parallel per book —
+	// OD uses whatever ISBN Goodreads provided (or title+author fallback) while
+	// OL enrichment fills in page count and a better ISBN in the background.
+	resultCh := make(chan result, len(toFetch))
+	var wg sync.WaitGroup
+	for _, book := range toFetch {
 		book := book
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			// Check the per-book result cache first (skipped on hard refresh).
-			if !hardRefresh && book.GoodreadsID != "" {
-				var cached BookEvent
-				if hit, _ := h.cache.GetBook(book.GoodreadsID, libsKey, &cached); hit {
-					slog.Debug("book cache hit", "book", book.Title)
-					resultCh <- result{
-						book:           cached.Book,
-						libraryResults: cached.LibraryResults,
-						amazonResult:   cached.AmazonResult,
-					}
-					return
-				}
-			}
-
-			// Cache miss — run the full pipeline.
-			// Use a per-book timeout so a slow/hung API call never blocks the whole stream.
 			bookCtx, bookCancel := context.WithTimeout(ctx, 30*time.Second)
 			defer bookCancel()
 
-			// Enrich this book (Open Library ISBN13 + cover)
-			enriched := h.openLibrary.Enrich(bookCtx, []models.Book{book})
-			book = enriched[0]
+			// OL enrichment runs concurrently with OD checks.
+			var enrichedBook models.Book
+			var olWg sync.WaitGroup
+			olWg.Add(1)
+			go func() {
+				defer olWg.Done()
+				enriched := h.openLibrary.Enrich(bookCtx, []models.Book{book})
+				enrichedBook = enriched[0]
+			}()
 
-			// Library availability fan-out
+			// OD availability checks start immediately using current book data.
 			libResults := make([]models.LibraryResult, len(libraries))
 			for i := range libResults {
 				libResults[i] = models.LibraryResult{LibraryKey: libraries[i], Status: models.StatusNotFound}
@@ -242,7 +260,6 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 						return
 					}
 					defer h.odSem.Release(1)
-
 					lr, err := h.overdrive.CheckAvailability(bookCtx, book, lib)
 					if err != nil {
 						slog.Warn("overdrive check failed", "book", book.Title, "library", lib, "err", err)
@@ -253,7 +270,10 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 			}
 			libWg.Wait()
 
-			// Amazon pricing
+			// Wait for OL enrichment to finish before assembling the result.
+			olWg.Wait()
+			book = enrichedBook
+
 			var azResult models.AmazonResult
 			if err := h.azSem.Acquire(bookCtx, 1); err == nil {
 				azResult, err = h.amazon.GetPrices(bookCtx, book)
@@ -263,7 +283,6 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Gutenberg lookup (fast local SQLite — no semaphore needed).
 			gbResult := h.gutenberg.Lookup(book.Title, book.Author)
 
 			res := result{
@@ -273,7 +292,6 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 				gutenbergResult: gbResult,
 			}
 
-			// Only cache if the book context completed successfully (not timed out).
 			if bookCtx.Err() == nil && book.GoodreadsID != "" {
 				if err := h.cache.SetBook(book.GoodreadsID, libsKey, BookEvent{
 					Book:            res.book,
@@ -289,18 +307,16 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
-	// Close channel when all goroutines done
 	go func() {
 		wg.Wait()
 		close(resultCh)
 	}()
 
-	completed := 0
 	for res := range resultCh {
 		if ctx.Err() != nil {
 			return
 		}
-		completed++
+		completedCount++
 		sendEvent("book", BookEvent{
 			Book:            res.book,
 			LibraryResults:  res.libraryResults,
@@ -309,7 +325,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		})
 		sendEvent("progress", ProgressEvent{
 			Total:     len(books),
-			Completed: completed,
+			Completed: completedCount,
 		})
 	}
 

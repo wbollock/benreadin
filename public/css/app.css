@@ -239,6 +239,39 @@ label {
   letter-spacing: 0;
   margin-left: 6px;
 }
+.url-example {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.url-example-label {
+  font-size: .75rem;
+  color: rgba(255,255,255,.4);
+}
+.url-example-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 20px;
+  color: rgba(255,255,255,.75);
+  font-size: .78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.url-example-btn:hover {
+  background: rgba(255,255,255,.14);
+  border-color: rgba(255,255,255,.3);
+  color: #fff;
+}
+.url-example-btn svg {
+  flex-shrink: 0;
+  opacity: .7;
+}
 
 input[type="text"],
 input[type="url"] {
@@ -351,6 +384,15 @@ input::placeholder { color: var(--text-subtle); }
 .autocomplete-item:hover, .autocomplete-item.active { background: var(--accent-bg); }
 .autocomplete-item .lib-name { font-weight: 500; color: var(--text); }
 .autocomplete-item .lib-key { font-size: .78rem; color: var(--text-muted); font-family: var(--font-mono); }
+.autocomplete-header {
+  padding: 6px 12px 4px;
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  pointer-events: none;
+}
 
 /* ================================================================
    BUTTONS
@@ -521,6 +563,22 @@ input::placeholder { color: var(--text-subtle); }
   transition: width .35s ease;
   width: 0%;
 }
+.progress-bar-fill.indeterminate {
+  width: 100% !important;
+  transition: none !important;
+  background: linear-gradient(90deg,
+    var(--accent-dark) 0%,
+    var(--accent)      35%,
+    var(--accent-dark) 60%,
+    var(--accent)      85%,
+    var(--accent-dark) 100%);
+  background-size: 300% 100%;
+  animation: progress-sweep 1.5s linear infinite;
+}
+@keyframes progress-sweep {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
 .progress-label {
   font-size: .8125rem;
   color: var(--text-muted);
@@ -583,6 +641,9 @@ input::placeholder { color: var(--text-subtle); }
   border-color: var(--border-soft);
 }
 .book-card.hidden { display: none; }
+.book-card--stub { opacity: 0.65; }
+.book-card-skeleton { pointer-events: none; }
+.book-card-skeleton:hover { box-shadow: var(--shadow-sm); transform: none; border-color: var(--border); }
 
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(8px); }
@@ -758,6 +819,15 @@ input::placeholder { color: var(--text-subtle); }
 .badge-wait      { background: var(--amber-bg);  color: var(--amber); }
 .badge-unavail   { background: var(--red-bg);    color: var(--red); }
 .badge-notfound  { background: var(--gray-bg);   color: var(--gray); }
+.badge-checking  {
+  background: var(--border-soft);
+  color: var(--text-subtle);
+  animation: checking-pulse 1.6s ease-in-out infinite;
+}
+@keyframes checking-pulse {
+  0%, 100% { opacity: 0.9; }
+  50%       { opacity: 0.4; }
+}
 
 /* Kindle delivery indicator inside badge */
 .badge-kindle-pill {
@@ -865,6 +935,30 @@ input::placeholder { color: var(--text-subtle); }
 [data-theme="dark"] .filter-chip-gutenberg { border-color: #065f46; color: #6ee7b7; }
 [data-theme="dark"] .filter-chip-gutenberg:hover { background: #052e1c; }
 [data-theme="dark"] .filter-chip-gutenberg.active { background: #059669; color: #fff; }
+
+.filter-mode-toggle {
+  display: flex;
+  border: 1.5px solid var(--border);
+  border-radius: 100px;
+  overflow: hidden;
+  visibility: hidden;
+  flex-shrink: 0;
+}
+.filter-mode-btn {
+  padding: 4px 11px;
+  border: none;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+  white-space: nowrap;
+}
+.filter-mode-btn:not(:last-child) { border-right: 1.5px solid var(--border); }
+.filter-mode-btn.active { background: var(--accent); color: #fff; }
+.filter-mode-btn:hover:not(.active) { background: var(--accent-bg); color: var(--accent); }
 
 .filter-select {
   padding: 6px 12px;
@@ -1124,7 +1218,7 @@ input::placeholder { color: var(--text-subtle); }
   .hero h1 { font-size: 2.1rem; }
   .search-card { padding: 24px 20px; border-radius: var(--radius-lg); }
   .book-grid { grid-template-columns: 1fr; }
-  .book-card { padding: 16px; }
+  .book-card { padding: 16px; gap: 14px; }
   .book-cover { width: 64px; }
   .book-cover img { width: 64px; height: 96px; }
   .book-cover-placeholder { width: 64px; height: 96px; }
@@ -1135,21 +1229,39 @@ input::placeholder { color: var(--text-subtle); }
     overflow-x: auto;
     flex-wrap: nowrap;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
+    padding-bottom: 6px;
     max-width: 100%;
+    /* Gradient hint that chips are scrollable */
+    -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+    mask-image: linear-gradient(to right, black 80%, transparent 100%);
   }
-  .filter-group[style*="margin-left:auto"] { margin-left: 0 !important; }
+  /* Sort group: full width, stacked */
+  .filter-group[style*="margin-left:auto"] { margin-left: 0 !important; width: 100%; }
+  .filter-select { width: 100%; }
+  /* Larger badges and pills for mobile readability */
+  .badge { font-size: .8rem; padding: 3px 10px; }
+  .price-pill { font-size: .78rem; padding: 4px 11px; }
+  .lib-label { min-width: 44px; font-size: .75rem; }
+  .book-title { font-size: .9rem; }
+  .progress-label { font-size: .875rem; }
   /* Book title row: stack rating below title on small screens */
   .book-title-row { flex-direction: column; gap: 4px; }
   /* Header: shrink button labels */
   .site-header-inner { gap: 6px; }
   .btn-secondary, .btn-copy-link { padding: 6px 10px; font-size: .75rem; }
+  /* Wrap action buttons naturally */
+  .card-actions-group { flex-wrap: wrap; }
 }
 
 @media (max-width: 480px) {
-  /* Hide verbose header button labels, keep icons only */
+  .book-card { padding: 14px 12px; }
+  /* Badges slightly smaller but still readable */
+  .badge { font-size: .78rem; }
+  /* Keep header button labels on very small screens — icons alone are unclear */
   .site-header-inner .btn-text { display: none; }
   /* Compact card actions on very small screens */
   .card-actions-group { gap: 4px; }
   .btn-secondary.btn-sm { padding: 5px 8px; font-size: .72rem; }
+  /* Tighter library rows */
+  .library-row { gap: 6px; }
 }

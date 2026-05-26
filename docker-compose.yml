@@ -1,0 +1,15 @@
+services:
+  benreadin:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DB_PATH=/app/data/cache.db
+
+volumes:
+  data:

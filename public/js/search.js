@@ -1,8 +1,9 @@
 'use strict';
 
 (function () {
-  const form       = document.getElementById('search-form');
-  const urlInput   = document.getElementById('shelf-url');
+  const form        = document.getElementById('search-form');
+  const urlInput    = document.getElementById('shelf-url');
+  const exampleBtn  = document.getElementById('example-shelf-btn');
   const chipWrap   = document.getElementById('library-chips');
   const chipInput  = document.getElementById('library-input');
   const dropdown   = document.getElementById('autocomplete-list');
@@ -14,6 +15,18 @@
   let acItems = [];
   let acIndex = -1;
   let debounceTimer = null;
+
+  // ---- Pre-populate libraries from recent usage ----
+  loadRecentLibs().forEach(lib => addLibrary(lib.key, lib.name));
+
+  // ---- Example shelf button ----
+  if (exampleBtn) {
+    exampleBtn.addEventListener('click', () => {
+      urlInput.value = 'https://www.goodreads.com/user/show/97106512-william';
+      urlInput.focus();
+      clearError();
+    });
+  }
 
   // ---- Aliases (localStorage) ----
   function loadAliases() {
@@ -27,6 +40,45 @@
   function displayName(key, name) {
     const aliases = loadAliases();
     return aliases[key] || name || key;
+  }
+
+  // ---- Recently used libraries (localStorage) ----
+  const RECENT_KEY = 'benreadin_recent_libs';
+  const MAX_RECENT = 10;
+
+  function loadRecentLibs() {
+    try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; }
+  }
+
+  function saveRecentLibs(libs) {
+    const recent = loadRecentLibs();
+    // Merge: move each used lib to the front
+    for (const lib of [...libs].reverse()) {
+      const idx = recent.findIndex(r => r.key === lib.key);
+      if (idx !== -1) recent.splice(idx, 1);
+      recent.unshift({ key: lib.key, name: lib.name });
+    }
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)));
+  }
+
+  async function showEmptySuggestions() {
+    const recent = loadRecentLibs().filter(r => !libraries.find(l => l.key === r.key));
+    if (recent.length) {
+      acItems = recent;
+      acIndex = -1;
+      renderDropdown('Recently used');
+      return;
+    }
+    // Fall back to popular libraries from server
+    try {
+      const res = await fetch('/api/libraries');
+      const popular = (await res.json()).filter(r => !libraries.find(l => l.key === r.key));
+      if (popular.length) {
+        acItems = popular;
+        acIndex = -1;
+        renderDropdown('Popular libraries');
+      }
+    } catch { /* ignore */ }
   }
 
   // ---- Library chip management ----
@@ -167,7 +219,10 @@
     if (e.key === 'Escape') closeDropdown();
   });
 
-  chipInput.addEventListener('focus', () => chipWrap.classList.add('focused'));
+  chipInput.addEventListener('focus', () => {
+    chipWrap.classList.add('focused');
+    if (!chipInput.value.trim()) showEmptySuggestions();
+  });
   chipInput.addEventListener('blur', () => {
     chipWrap.classList.remove('focused');
     setTimeout(closeDropdown, 200);
@@ -178,13 +233,16 @@
       const res = await fetch(`/api/libraries?q=${encodeURIComponent(q)}`);
       acItems = await res.json();
       acIndex = acItems.length > 0 ? 0 : -1;
-      renderDropdown();
+      renderDropdown(null);
     } catch { /* ignore */ }
   }
 
-  function renderDropdown() {
+  function renderDropdown(label) {
     if (!acItems.length) { closeDropdown(); return; }
-    dropdown.innerHTML = acItems.map((item, i) =>
+    const header = label
+      ? `<div class="autocomplete-header">${escHtml(label)}</div>`
+      : '';
+    dropdown.innerHTML = header + acItems.map((item, i) =>
       `<div class="autocomplete-item${i === acIndex ? ' active' : ''}" data-key="${escHtml(item.key)}" data-name="${escHtml(item.name)}">
         <span class="lib-name">${escHtml(item.name)}</span>
         <span class="lib-key">${escHtml(item.key)}</span>
@@ -242,6 +300,7 @@
     if (libraries.length === 0) { showError('Add at least one library to check.'); return; }
 
     const aliases = loadAliases();
+    saveRecentLibs(libraries);
     const params = new URLSearchParams();
     params.set('url', url);
     libraries.forEach(l => {
