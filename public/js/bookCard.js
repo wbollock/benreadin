@@ -14,14 +14,14 @@ function formatPrice(n) {
 }
 
 function availabilityBadge(result) {
-  const kindle = result.has_kindle ? ' <span class="badge-kindle-pill" title="Kindle delivery available">⚡K</span>' : '';
+  const kindle = result.has_kindle ? ' <span class="badge-kindle-pill" title="Kindle delivery available">K</span>' : '';
   switch (result.status) {
     case 'available':
-      return `<span class="badge badge-available">&#10003; Available${result.available_copies > 0 ? ` (${result.available_copies})` : ''}${kindle}</span>`;
+      return `<span class="badge badge-available">Available${result.available_copies > 0 ? ` (${result.available_copies})` : ''}${kindle}</span>`;
     case 'wait':
-      return `<span class="badge badge-wait">&#8987; ${result.estimated_wait_days > 0 ? result.estimated_wait_days + '-day wait' : 'On hold'}${kindle}</span>`;
+      return `<span class="badge badge-wait">${result.estimated_wait_days > 0 ? result.estimated_wait_days + '-day wait' : 'On hold'}${kindle}</span>`;
     case 'unavailable':
-      return `<span class="badge badge-unavail">&#10005; Not in catalog</span>`;
+      return `<span class="badge badge-unavail">Not in catalog</span>`;
     default:
       return `<span class="badge badge-notfound">Not found</span>`;
   }
