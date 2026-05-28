@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
 	"github.com/joho/godotenv"
 	"github.com/wbollock/benreadin/internal/db"
 	"github.com/wbollock/benreadin/internal/handlers"
@@ -100,14 +101,14 @@ func main() {
 	r.Use(appmw.Logger)
 	r.Use(appmw.Security)
 
-	// JSON/redirect endpoints: compress responses.
-	r.With(chimw.Compress(5)).Get("/api/recommendations", recsHandler.ServeHTTP)
-	r.With(chimw.Compress(5)).Get("/api/libraries", librariesHandler.ServeHTTP)
-	r.With(chimw.Compress(5)).Post("/api/shorten", shortenHandler.Create)
+	// JSON/redirect endpoints: compress responses, apply rate limits.
+	r.With(chimw.Compress(5), httprate.LimitByIP(5, time.Minute)).Get("/api/recommendations", recsHandler.ServeHTTP)
+	r.With(chimw.Compress(5), httprate.LimitByIP(60, time.Minute)).Get("/api/libraries", librariesHandler.ServeHTTP)
+	r.With(chimw.Compress(5), httprate.LimitByIP(30, time.Minute)).Post("/api/shorten", shortenHandler.Create)
 	r.With(chimw.Compress(5)).Get("/s/{token}", shortenHandler.Redirect)
 
-	// SSE: never compress — streaming requires unfragmented chunks.
-	r.Get("/api/search", searchHandler.ServeHTTP)
+	// SSE: never compress; apply a request-rate limit per IP.
+	r.With(httprate.LimitByIP(10, time.Minute)).Get("/api/search", searchHandler.ServeHTTP)
 
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
