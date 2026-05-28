@@ -1,24 +1,21 @@
-FROM golang:1.25-alpine AS build
+FROM golang:1.23-alpine AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 go build -o /bin/benreadin ./cmd/benreadin
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build \
+    -ldflags="-s -w -X main.version=${VERSION}" \
+    -o /out/benreadin ./cmd/benreadin
 
 
-FROM alpine:3.21
+FROM gcr.io/distroless/static-debian12:nonroot
 
-RUN addgroup -S benreadin && adduser -S -G benreadin benreadin
-
-WORKDIR /app
-COPY --from=build /bin/benreadin .
-COPY public/ public/
-
-RUN mkdir -p data && chown -R benreadin:benreadin /app
-
-USER benreadin
+COPY --from=build /out/benreadin /benreadin
+COPY public /public
+COPY internal/db/schema.sql /internal/db/schema.sql
 
 EXPOSE 3000
-ENTRYPOINT ["/app/benreadin"]
+ENTRYPOINT ["/benreadin"]
