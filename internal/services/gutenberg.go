@@ -24,9 +24,13 @@ const (
 
 // GutenbergService matches books against the Project Gutenberg catalog.
 type GutenbergService struct {
-	db     *sql.DB
-	client *http.Client
+	db             *sql.DB
+	client         *http.Client
+	catalogLoaded  bool
 }
+
+// CatalogLoaded reports whether the Gutenberg catalog has finished loading.
+func (g *GutenbergService) CatalogLoaded() bool { return g.catalogLoaded }
 
 func NewGutenbergService(db *sql.DB) *GutenbergService {
 	return &GutenbergService{
@@ -47,6 +51,7 @@ func (g *GutenbergService) LoadCatalog(ctx context.Context) error {
 	_ = g.db.QueryRowContext(ctx, `SELECT id FROM gutenberg_books WHERE id = 0`).Scan(&fetchedAt)
 	age := time.Now().Unix() - fetchedAt
 	if count > 1 && age < gutenbergRefreshTTL {
+		g.catalogLoaded = true
 		slog.Info("gutenberg catalog up to date", "entries", count-1)
 		return nil
 	}
@@ -147,6 +152,7 @@ func (g *GutenbergService) LoadCatalog(ctx context.Context) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("gutenberg commit: %w", err)
 	}
+	g.catalogLoaded = true
 	slog.Info("gutenberg catalog loaded", "entries", inserted)
 	return nil
 }

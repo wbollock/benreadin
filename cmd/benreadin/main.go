@@ -13,18 +13,21 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
 	"github.com/wbollock/benreadin/internal/db"
 	"github.com/wbollock/benreadin/internal/handlers"
+	appmw "github.com/wbollock/benreadin/internal/middleware"
 	"github.com/wbollock/benreadin/internal/services"
 )
+
+// version is set at build time via -ldflags "-X main.version=<git-sha>".
+var version = "dev"
 
 func main() {
 	migrateOnly := flag.Bool("migrate-only", false, "run DB migrations and exit")
 	flag.Parse()
 
-	// Load .env if present (ignore error — env vars may be set externally)
 	_ = godotenv.Load()
 
 	cfg := loadConfig()
@@ -33,7 +36,6 @@ func main() {
 		Level: slog.LevelInfo,
 	})))
 
-	// Open database
 	database, err := db.Open(cfg.dbPath, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL)
 	if err != nil {
 		slog.Error("failed to open database", "err", err)
@@ -48,7 +50,6 @@ func main() {
 		return
 	}
 
-	// Wire up services
 	cache := services.NewCacheService(database, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL)
 
 	goodreadsSvc := services.NewGoodreadsService()
@@ -56,7 +57,6 @@ func main() {
 	openLibrarySvc := services.NewOpenLibraryService()
 	gutenbergSvc := services.NewGutenbergService(database)
 
-	// Load Gutenberg catalog in background (startup may be slow on first run).
 	go func() {
 		if err := gutenbergSvc.LoadCatalog(context.Background()); err != nil {
 			slog.Warn("gutenberg catalog load failed", "err", err)
@@ -73,12 +73,11 @@ func main() {
 	if amazonSvc.Enabled() {
 		slog.Info("amazon PA-API enabled", "marketplace", cfg.amazonMarketplace)
 	} else {
-		slog.Info("amazon PA-API disabled (no credentials) — prices will not be shown")
+		slog.Info("amazon PA-API disabled (no credentials)")
 	}
 
 	recommendationSvc := services.NewRecommendationService(overdriveSvc)
 
-	// Wire up handlers
 	searchHandler := handlers.NewSearchHandler(
 		goodreadsSvc,
 		overdriveSvc,
@@ -94,48 +93,45 @@ func main() {
 	shortenHandler := handlers.NewShortenHandler(database)
 	recsHandler := handlers.NewRecommendationsHandler(goodreadsSvc, recommendationSvc)
 
-	// Router
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.RealIP)
+	r.Use(chimw.RequestID)
+	r.Use(chimw.RealIP)
+	r.Use(chimw.Recoverer)
+	r.Use(appmw.Logger)
+	r.Use(appmw.Security)
 
-	// API routes
+	// JSON/redirect endpoints: compress responses.
+	r.With(chimw.Compress(5)).Get("/api/recommendations", recsHandler.ServeHTTP)
+	r.With(chimw.Compress(5)).Get("/api/libraries", librariesHandler.ServeHTTP)
+	r.With(chimw.Compress(5)).Post("/api/shorten", shortenHandler.Create)
+	r.With(chimw.Compress(5)).Get("/s/{token}", shortenHandler.Redirect)
+
+	// SSE: never compress — streaming requires unfragmented chunks.
 	r.Get("/api/search", searchHandler.ServeHTTP)
-	r.Get("/api/recommendations", recsHandler.ServeHTTP)
-	r.Get("/api/libraries", librariesHandler.ServeHTTP)
-	r.Post("/api/shorten", shortenHandler.Create)
 
-	// Shortlink redirects
-	r.Get("/s/{token}", shortenHandler.Redirect)
-
-	// Health check
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintln(w, `{"status":"ok"}`)
+		fmt.Fprintf(w, `{"status":"ok","version":%q,"amazon":%v,"gutenberg":%v}`+"\n",
+			version, amazonSvc.Enabled(), gutenbergSvc.CatalogLoaded())
 	})
 
-	// Static files
-	r.Handle("/*", http.FileServer(http.Dir("public")))
+	// Static files: compress HTML/CSS/JS, set cache headers.
+	r.With(chimw.Compress(5)).Handle("/*", handlers.StaticHandler("public"))
 
 	addr := ":" + cfg.port
 	srv := &http.Server{
-		Addr:        addr,
-		Handler:     r,
-		ReadTimeout: 15 * time.Second,
-		// WriteTimeout intentionally 0 — SSE streams are long-lived and the
-		// timeout would cancel the context mid-stream.  Per-request timeouts
-		// are handled by the client disconnecting.
-		WriteTimeout: 0,
+		Addr:         addr,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 0, // SSE streams are long-lived
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Graceful shutdown
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		slog.Info("server starting", "addr", addr)
+		slog.Info("server starting", "addr", addr, "version", version)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "err", err)
 			os.Exit(1)
@@ -143,7 +139,7 @@ func main() {
 	}()
 
 	<-stop
-	slog.Info("shutting down...")
+	slog.Info("shutting down…")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
