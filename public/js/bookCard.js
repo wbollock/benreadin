@@ -122,17 +122,17 @@ function buildBookCard(event, show) {
        </div>`
     : '';
 
-  // Cover image
+  // Cover image — width/height prevent CLS while image loads.
   const cover = book.cover_url
-    ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'book-cover-placeholder\\'>📚</div>'">`
-    : `<div class="book-cover-placeholder">📚</div>`;
+    ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}" loading="lazy" decoding="async" width="76" height="114" onerror="this.parentElement.innerHTML='<div class=\\'book-cover-placeholder\\'></div>'">`
+    : `<div class="book-cover-placeholder"></div>`;
 
   const description = book.description
     ? `<details class="book-description-details"><summary>About this book</summary><p class="book-description">${escHtml(book.description)}</p></details>`
     : '';
 
   const pageCount = book.page_count
-    ? `<span class="book-pages">📖 ${book.page_count} pages</span>`
+    ? `<span class="book-pages">${book.page_count} pages</span>`
     : '';
 
   const avgRating = book.average_rating
@@ -199,8 +199,8 @@ function buildSkeletonCard(_, index) {
 // arrives. index is used for a staggered cascade animation.
 function buildStubCard(book, libraryKeys, index) {
   const cover = book.cover_url
-    ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'book-cover-placeholder\\'>📚</div>'">`
-    : `<div class="book-cover-placeholder">📚</div>`;
+    ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}" loading="lazy" decoding="async" width="76" height="114" onerror="this.parentElement.innerHTML='<div class=\\'book-cover-placeholder\\'></div>'">`
+    : `<div class="book-cover-placeholder"></div>`;
 
   const avgRating = book.average_rating
     ? `<span class="rating-avg" title="Goodreads average rating">★ ${book.average_rating.toFixed(2)}</span>`
@@ -220,9 +220,8 @@ function buildStubCard(book, libraryKeys, index) {
     </div>`;
   }).join('');
 
-  // Cascade: first 20 books stagger at 25ms each, rest clamp to 500ms so the
-  // grid feels like a waterfall rather than all appearing instantly or too slowly.
-  const delay = index !== undefined ? Math.min(index * 25, 500) : 0;
+  // Stagger up to 240ms so the grid feels like a waterfall.
+  const delay = index !== undefined ? Math.min(index * 15, 240) : 0;
   const delayStyle = delay > 0 ? `animation-delay:${delay}ms;` : '';
 
   return `

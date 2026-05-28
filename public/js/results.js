@@ -13,16 +13,17 @@
   const recsGrid       = document.getElementById('recs-grid');
   const recsToggle     = document.getElementById('recs-toggle');
 
-  // All received book events, in arrival order (= shelf order)
+  // All received book events, in arrival order (= shelf order).
   const allBooks = [];
+  // Map from goodreads_id → DOM element for O(1) in-place updates.
+  const bookElements = new Map();
+
   let totalBooks    = 0;
   let completedBooks = 0;
-  // Multi-select filters: a Set of active filter keys. Empty = show all.
+
   const activeFilters = new Set();
-  // AND vs OR logic when multiple filters are active.
   const FILTER_MODE_KEY = 'benreadin_filter_mode';
   let filterMode = localStorage.getItem(FILTER_MODE_KEY) || 'or';
-  // Persist sort preference in localStorage; default to available_first.
   const SORT_KEY = 'benreadin_sort';
   let activeSort = localStorage.getItem(SORT_KEY) || 'available_first';
 
@@ -34,9 +35,13 @@
     setProgress(0, msg);
   }
 
+  let progressRaf = null;
   function setProgress(pct, label) {
-    progressBar.style.width = Math.min(100, pct) + '%';
-    if (label !== undefined) progressLabel.textContent = label;
+    if (progressRaf) cancelAnimationFrame(progressRaf);
+    progressRaf = requestAnimationFrame(() => {
+      progressBar.style.width = Math.min(100, pct) + '%';
+      if (label !== undefined) progressLabel.textContent = label;
+    });
   }
 
   // ---- Filter / Sort logic ----
@@ -60,7 +65,6 @@
   function bookMatchesFilter(event, filter) {
     const status = bestStatus(event.library_results);
     if (filter === 'available') {
-      // True only when at least one library has it available AND no library has a wait.
       const hasAnyWait = (event.library_results || []).some(lr => lr.status === 'wait');
       return status === 'available' && !hasAnyWait;
     }
@@ -74,9 +78,7 @@
   function filterBook(event) {
     if (activeFilters.size === 0) return true;
     const filters = [...activeFilters];
-    if (filterMode === 'and') {
-      return filters.every(f => bookMatchesFilter(event, f));
-    }
+    if (filterMode === 'and') return filters.every(f => bookMatchesFilter(event, f));
     return filters.some(f => bookMatchesFilter(event, f));
   }
 
@@ -96,29 +98,6 @@
         });
         break;
       }
-      case 'kindle_first': {
-        // Books where any library has Kindle delivery come first, then available, then rest.
-        const statusOrder = { available: 0, wait: 1, unavailable: 2, not_found: 3 };
-        copy.sort((a, b) => {
-          const aK = (a.library_results || []).some(lr => lr.has_kindle) ? 0 : 1;
-          const bK = (b.library_results || []).some(lr => lr.has_kindle) ? 0 : 1;
-          if (aK !== bK) return aK - bK;
-          // Within same Kindle group, sort available-first
-          const sa = statusOrder[bestStatus(a.library_results)] ?? 3;
-          const sb = statusOrder[bestStatus(b.library_results)] ?? 3;
-          return sa - sb;
-        });
-        break;
-      }
-      case 'unavailable_first': {
-        const order = { available: 0, wait: 1, unavailable: 2, not_found: 3 };
-        copy.sort((a, b) => {
-          const sa = order[bestStatus(a.library_results)] ?? 3;
-          const sb = order[bestStatus(b.library_results)] ?? 3;
-          return sb - sa;
-        });
-        break;
-      }
       case 'wait_asc':
         copy.sort((a, b) => {
           const wa = bestStatus(a.library_results) === 'available' ? -Infinity : minWait(a.library_results);
@@ -126,30 +105,8 @@
           return wa - wb;
         });
         break;
-      case 'wait_desc':
-        copy.sort((a, b) => {
-          const wa = minWait(a.library_results);
-          const wb = minWait(b.library_results);
-          return wb - wa;
-        });
-        break;
       case 'rating_desc':
         copy.sort((a, b) => (b.book.average_rating || 0) - (a.book.average_rating || 0));
-        break;
-      case 'rating_asc':
-        copy.sort((a, b) => (a.book.average_rating || 0) - (b.book.average_rating || 0));
-        break;
-      case 'user_rating_desc':
-        copy.sort((a, b) => (b.book.user_rating || 0) - (a.book.user_rating || 0));
-        break;
-      case 'user_rating_asc':
-        copy.sort((a, b) => (a.book.user_rating || 0) - (b.book.user_rating || 0));
-        break;
-      case 'pages_asc':
-        copy.sort((a, b) => (a.book.page_count || 99999) - (b.book.page_count || 99999));
-        break;
-      case 'pages_desc':
-        copy.sort((a, b) => (b.book.page_count || 0) - (a.book.page_count || 0));
         break;
       case 'title_asc':
         copy.sort((a, b) => a.book.title.localeCompare(b.book.title));
@@ -157,23 +114,40 @@
       case 'title_desc':
         copy.sort((a, b) => b.book.title.localeCompare(a.book.title));
         break;
-      default: // shelf order — arrival order
+      default: // shelf order
         break;
     }
     return copy;
   }
 
-  function renderGrid() {
+  // ---- DOM helpers ----
+
+  // Parse an HTML string into a real DOM element (no full re-render).
+  function parseHTML(html) {
+    const t = document.createElement('template');
+    t.innerHTML = html.trim();
+    return t.content.firstElementChild;
+  }
+
+  // Apply the current sort + filter to the existing DOM elements in-place.
+  // Uses appendChild to reorder (moves nodes, doesn't clone) — single reflow.
+  function applyView() {
     const books = sortedBooks();
-    const visible = books.filter(filterBook);
+    let visibleCount = 0;
+    const frag = document.createDocumentFragment();
 
-    bookGrid.innerHTML = books.map((event, i) => {
+    for (const event of books) {
+      const id = event.book && event.book.goodreads_id;
+      const el = id ? bookElements.get(id) : null;
+      if (!el) continue;
       const show = filterBook(event);
-      // Pass index as animation delay so re-renders don't all flash at once
-      return buildBookCard(event, show);
-    }).join('');
+      el.classList.toggle('hidden', !show);
+      if (show) visibleCount++;
+      frag.appendChild(el);
+    }
 
-    updateCount(visible.length);
+    bookGrid.appendChild(frag);
+    updateCount(visibleCount < allBooks.length ? visibleCount : undefined);
   }
 
   function updateCount(visibleCount) {
@@ -182,7 +156,6 @@
       const ready = allBooks.length;
       const streaming = ready < totalBooks;
       if (streaming) {
-        // Show how many have been checked out of total while stubs are filling in.
         resultsCount.textContent = visibleCount !== undefined && visibleCount !== ready
           ? `(${visibleCount} shown — ${ready} / ${totalBooks} checked)`
           : `(${ready} / ${totalBooks} checked)`;
@@ -206,7 +179,6 @@
     });
     const modeToggle = document.getElementById('filter-mode-toggle');
     if (modeToggle) {
-      // Only show when 2+ filters are active.
       modeToggle.style.visibility = activeFilters.size >= 2 ? 'visible' : 'hidden';
       modeToggle.querySelectorAll('.filter-mode-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.mode === filterMode);
@@ -226,14 +198,14 @@
         }
       }
       syncFilterUI();
-      renderGrid();
+      applyView();
     });
   });
 
   sortSelect.addEventListener('change', () => {
     activeSort = sortSelect.value;
     localStorage.setItem(SORT_KEY, activeSort);
-    renderGrid();
+    applyView();
   });
 
   document.getElementById('filter-mode-toggle').addEventListener('click', e => {
@@ -242,7 +214,7 @@
     filterMode = btn.dataset.mode;
     localStorage.setItem(FILTER_MODE_KEY, filterMode);
     syncFilterUI();
-    renderGrid();
+    applyView();
   });
 
   // ---- SSE ----
@@ -273,14 +245,13 @@
     try {
       const all = JSON.parse(localStorage.getItem(RESULTS_CACHE_STORAGE_KEY) || '{}');
       all[buildCacheKey()] = { books, timestamp: Date.now() };
-      // Evict oldest entries if we have too many
       const keys = Object.keys(all);
       if (keys.length > 15) {
         keys.sort((a, b) => all[a].timestamp - all[b].timestamp);
         delete all[keys[0]];
       }
       localStorage.setItem(RESULTS_CACHE_STORAGE_KEY, JSON.stringify(all));
-    } catch { /* quota exceeded — non-critical */ }
+    } catch { /* quota exceeded */ }
   }
 
   function clearCachedResults() {
@@ -295,10 +266,15 @@
     const entry = getCachedResults();
     if (!entry || !entry.books || entry.books.length === 0) return false;
 
-    entry.books.forEach(b => allBooks.push(b));
+    entry.books.forEach(b => {
+      allBooks.push(b);
+      const id = b.book && b.book.goodreads_id;
+      const el = parseHTML(buildBookCard(b, filterBook(b)));
+      if (id) bookElements.set(id, el);
+      bookGrid.appendChild(el);
+    });
     totalBooks = allBooks.length;
-
-    renderGrid();
+    applyView();
     resultsHeader.style.display = 'block';
 
     const ageMin = Math.round((Date.now() - entry.timestamp) / 60000);
@@ -309,14 +285,12 @@
     return true;
   }
 
-  // Build key→name map from URL params (set by search page).
   const urlLibNames = {};
   params.getAll('library_name').forEach(s => {
     const sep = s.indexOf(':');
     if (sep > 0) urlLibNames[s.slice(0, sep)] = s.slice(sep + 1);
   });
 
-  // Aliases override URL names; URL names override raw keys.
   function loadAliases() {
     try { return JSON.parse(localStorage.getItem('benreadin_lib_aliases') || '{}'); } catch { return {}; }
   }
@@ -339,14 +313,14 @@
   baseParams.set('url', shelfUrl);
   libraries.forEach(l => baseParams.append('libraries', l));
 
-  // Sync the select element to the persisted sort value.
   sortSelect.value = activeSort;
-  // Sync the AND/OR toggle to the persisted filter mode.
   syncFilterUI();
 
   let activeES = null;
   let streamDone = false;
   let skeletonsCleared = false;
+
+  const skeletonCount = Math.ceil(window.innerHeight / 140) + 2;
 
   function showSkeletons(count) {
     bookGrid.insertAdjacentHTML('beforeend',
@@ -361,6 +335,7 @@
 
   function resetState() {
     allBooks.length = 0;
+    bookElements.clear();
     totalBooks = 0;
     completedBooks = 0;
     bookGrid.innerHTML = '';
@@ -383,11 +358,9 @@
     skeletonsCleared = false;
     resetState();
 
-    // Show skeleton cards immediately — before the SSE connection even opens —
-    // so the user sees a populated grid rather than a blank page.
-    showSkeletons(12);
+    showSkeletons(skeletonCount);
     progressBar.classList.add('indeterminate');
-    setProgress(0, 'Fetching your shelf…');
+    setProgress(0, 'Starting…');
 
     const p = new URLSearchParams(baseParams);
     if (refresh) p.set('refresh', 'true');
@@ -397,8 +370,6 @@
       const data = JSON.parse(e.data);
       if (data.total) {
         totalBooks = data.total;
-        // Switch from sweeping indeterminate bar to a real percentage bar
-        // now that we know how many books there are.
         progressBar.classList.remove('indeterminate');
       }
       if (data.completed !== undefined) completedBooks = data.completed;
@@ -411,14 +382,16 @@
       }
     });
 
-    // book_stubs: single batch event sent the instant the Goodreads shelf is
-    // fetched. Renders the entire book list at once (one DOM operation) with a
-    // staggered cascade animation so the grid floods in smoothly.
     es.addEventListener('book_stubs', e => {
       clearSkeletons();
       const {books: stubs} = JSON.parse(e.data);
-      bookGrid.insertAdjacentHTML('beforeend',
-        stubs.map((book, i) => buildStubCard(book, libraries, i)).join(''));
+      const frag = document.createDocumentFragment();
+      stubs.forEach((book, i) => {
+        const el = parseHTML(buildStubCard(book, libraries, i));
+        if (book.goodreads_id) bookElements.set(book.goodreads_id, el);
+        frag.appendChild(el);
+      });
+      bookGrid.appendChild(frag);
       resultsHeader.style.display = 'block';
     });
 
@@ -428,34 +401,19 @@
       allBooks.push(event);
 
       const grId = event.book && event.book.goodreads_id;
-      const stubEl = grId ? bookGrid.querySelector(`[data-grid="${CSS.escape(grId)}"]`) : null;
+      const show = filterBook(event);
+      const newEl = parseHTML(buildBookCard(event, show));
 
-      if (filterBook(event)) {
-        const html = buildBookCard(event, true);
-        if (stubEl) {
-          // Replace the stub card in-place with the full card.
-          stubEl.outerHTML = html;
-        } else {
-          // Cache hit (no stub was sent): use sort-aware insertion.
-          const status = bestStatus(event.library_results);
-          if (activeSort === 'available_first' && status === 'available') {
-            const firstNonAvail = bookGrid.querySelector('.book-card[data-status="wait"], .book-card[data-status="unavailable"], .book-card[data-status="not_found"]');
-            if (firstNonAvail) {
-              firstNonAvail.insertAdjacentHTML('beforebegin', html);
-            } else {
-              bookGrid.insertAdjacentHTML('beforeend', html);
-            }
-          } else {
-            bookGrid.insertAdjacentHTML('beforeend', html);
-          }
-        }
-      } else if (stubEl) {
-        // Book doesn't pass current filter — remove the stub.
-        stubEl.remove();
+      const oldEl = grId ? bookElements.get(grId) : null;
+      if (oldEl) {
+        // Swap the stub/old card in-place — no grid rebuild.
+        oldEl.replaceWith(newEl);
+      } else {
+        bookGrid.appendChild(newEl);
       }
+      if (grId) bookElements.set(grId, newEl);
 
-      // Count only completed (non-stub) cards for the visible count.
-      const visibleCount = bookGrid.querySelectorAll('.book-card:not(.book-card--stub)').length;
+      const visibleCount = bookGrid.querySelectorAll('.book-card:not(.book-card--stub):not(.hidden)').length;
       updateCount(visibleCount < allBooks.length ? visibleCount : undefined);
       resultsHeader.style.display = 'block';
     });
@@ -465,22 +423,16 @@
       streamDone = true;
       setProgress(100, data.message || 'Done');
       es.close();
-      // Save results to client cache so return visits render instantly.
       saveResultsToCache(allBooks.slice());
-      // One final render to apply exact sort order and correct counts.
-      renderGrid();
-      // Scroll to top so user sees the sorted results from the beginning.
+      // Final sort pass — reorder existing elements without rebuilding HTML.
+      applyView();
       window.scrollTo({ top: 0, behavior: 'smooth' });
       setTimeout(() => {
         document.getElementById('status-area').style.opacity = '0.4';
       }, 2000);
-      // Show the recommendations trigger button.
       document.getElementById('recs-trigger').style.display = 'block';
-      // Create a shortlink for easy sharing/bookmarking.
       createShortlink();
     });
-
-    // No inline recommendations — they're loaded on demand via the button.
 
     es.addEventListener('error', e => {
       try {
@@ -491,9 +443,6 @@
     });
 
     es.onerror = () => {
-      // Ignore errors after the stream completed normally — the browser's
-      // EventSource auto-reconnect fires onerror when the server closes the
-      // connection after sending 'done', but we don't want to show an error.
       if (streamDone || es.readyState === EventSource.CLOSED) return;
       showError('Connection lost. Please try again.');
       es.close();
@@ -538,14 +487,12 @@
     if (e.target === document.getElementById('rename-modal')) closeRenameModal();
   });
 
-  // Event delegation — clicking a lib label opens rename.
   bookGrid.addEventListener('click', e => {
     const label = e.target.closest('.lib-label');
     if (!label) return;
     const key = label.dataset.libkey;
     showRenameModal(key, alias => {
       saveAlias(key, alias);
-      // Update all matching labels on the page without a full re-render.
       document.querySelectorAll(`.lib-label[data-libkey="${CSS.escape(key)}"]`).forEach(el => {
         el.textContent = window.getLibName(key);
       });
@@ -569,15 +516,17 @@
     }
     recsGrid.innerHTML = recs.map(rec => {
       const cover = rec.cover_url
-        ? `<img src="${escHtml(rec.cover_url)}" alt="${escHtml(rec.title)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'rec-cover-placeholder\\'>📚</div>'">`
-        : `<div class="rec-cover-placeholder">📚</div>`;
+        ? `<img src="${escHtml(rec.cover_url)}" alt="${escHtml(rec.title)}" loading="lazy" decoding="async" width="54" height="81" onerror="this.parentElement.innerHTML='<div class=\\'rec-cover-placeholder\\'></div>'">`
+        : `<div class="rec-cover-placeholder"></div>`;
       const libBadges = (rec.library_results || [])
         .filter(lr => lr.status === 'available')
-        .map(lr => `<span class="badge badge-available" title="${escHtml(window.getLibName(lr.library_key))}">&#10003; ${escHtml(window.getLibName(lr.library_key))}</span>`)
+        .map(lr => `<span class="badge badge-available" title="${escHtml(window.getLibName(lr.library_key))}">Available — ${escHtml(window.getLibName(lr.library_key))}</span>`)
         .join('');
-      const because = rec.because_of_title
-        ? `<div class="rec-because">Similar to <em>${escHtml(rec.because_of_title)}</em></div>`
-        : '';
+      const because = rec.because_subject
+        ? `<div class="rec-because">From your shelf's <em>${escHtml(rec.because_subject)}</em></div>`
+        : rec.because_of_title
+          ? `<div class="rec-because">Similar to <em>${escHtml(rec.because_of_title)}</em></div>`
+          : '';
       return `
         <div class="rec-card">
           <div class="rec-cover">${cover}</div>
@@ -597,7 +546,7 @@
     const trigger = document.getElementById('recs-trigger');
     const loading = document.getElementById('recs-loading');
     btn.disabled = true;
-    btn.textContent = 'Finding recommendations…';
+    btn.textContent = 'Finding similar titles…';
     loading.style.display = 'flex';
     recsPanel.style.display = 'block';
     try {
@@ -608,15 +557,14 @@
       trigger.style.display = 'none';
       loading.style.display = 'none';
       renderRecs(recs);
-    } catch (err) {
+    } catch {
       loading.style.display = 'none';
       btn.disabled = false;
-      btn.textContent = '✨ Find recommendations based on your shelf';
+      btn.textContent = 'Suggest similar';
       recsGrid.innerHTML = '<p style="color:var(--red);font-size:.875rem;padding:8px 0;">Failed to load recommendations. Please try again.</p>';
     }
   });
 
-  // Load from client cache for instant results; fall back to SSE.
   if (!loadFromCache()) {
     startStream(false);
   }
@@ -638,11 +586,31 @@
       btn.dataset.href = fullLink;
       btn.style.display = 'inline-flex';
       btn.addEventListener('click', () => {
+        if (navigator.share) {
+          navigator.share({ title: 'BenReadin results', url: fullLink }).catch(() => {});
+          return;
+        }
         navigator.clipboard.writeText(fullLink).then(() => {
-          btn.textContent = 'Copied!';
-          setTimeout(() => { btn.textContent = 'Copy link'; }, 2000);
+          const span = btn.querySelector('.btn-text') || btn;
+          span.textContent = 'Copied!';
+          setTimeout(() => { span.textContent = 'Copy link'; }, 2000);
         });
       });
     } catch { /* non-critical */ }
   }
+
+  // ---- Keyboard shortcuts ----
+
+  document.addEventListener('keydown', e => {
+    // Skip when focus is inside an input.
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      sortSelect.focus();
+    }
+    if (e.key === '1') filterBtns[0] && filterBtns[0].click();
+    if (e.key === '2') filterBtns[1] && filterBtns[1].click();
+    if (e.key === '3') filterBtns[2] && filterBtns[2].click();
+    if (e.key === '4') filterBtns[3] && filterBtns[3].click();
+  });
 })();

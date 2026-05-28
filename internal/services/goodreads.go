@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/wbollock/benreadin/internal/models"
 )
 
@@ -54,40 +56,92 @@ type grItem struct {
 }
 
 // FetchShelf paginates through a Goodreads RSS shelf and returns all books.
+// Page 1 is fetched first; if it is full (200 items), subsequent pages are
+// fetched concurrently (up to 4 at a time, capped at page 5 = 1000 books).
 func (s *GoodreadsService) FetchShelf(ctx context.Context, userID, shelf string) ([]models.Book, error) {
-	var books []models.Book
-	seen := make(map[string]bool)
+	// Fetch page 1 first to determine pagination needs.
+	page1, err := s.fetchPage(ctx, buildFeedURL(userID, shelf, 1))
+	if err != nil {
+		return nil, fmt.Errorf("fetch goodreads page 1: %w", err)
+	}
+	if len(page1) == 0 {
+		return nil, nil
+	}
 
-	for page := 1; ; page++ {
-		feedURL := buildFeedURL(userID, shelf, page)
-		slog.Info("fetching goodreads page", "page", page, "url", feedURL)
+	books := itemsToBooks(page1)
 
-		items, err := s.fetchPage(ctx, feedURL)
-		if err != nil {
-			return nil, fmt.Errorf("fetch goodreads page %d: %w", page, err)
+	// If page 1 was full, fetch remaining pages concurrently.
+	const maxPage = 5
+	const concurrency = 4
+	if len(page1) == 200 {
+		type pageResult struct {
+			page  int
+			items []grItem
+		}
+		pageCh := make(chan pageResult, maxPage)
+
+		g, gCtx := errgroup.WithContext(ctx)
+		sem := make(chan struct{}, concurrency)
+		for p := 2; p <= maxPage; p++ {
+			p := p
+			sem <- struct{}{}
+			g.Go(func() error {
+				defer func() { <-sem }()
+				items, err := s.fetchPage(gCtx, buildFeedURL(userID, shelf, p))
+				if err != nil {
+					slog.Warn("goodreads page fetch failed", "page", p, "err", err)
+					return nil // non-fatal; we return what we have
+				}
+				pageCh <- pageResult{page: p, items: items}
+				return nil
+			})
 		}
 
-		if len(items) == 0 {
-			break
+		go func() {
+			_ = g.Wait()
+			close(pageCh)
+		}()
+
+		// Collect pages into a sorted slice.
+		pageMap := make(map[int][]grItem)
+		for r := range pageCh {
+			pageMap[r.page] = r.items
 		}
 
-		for _, item := range items {
-			b := itemToBook(item)
-			if seen[b.GoodreadsID] {
-				continue
+		// Append in order; stop when a page is empty (last page).
+		for p := 2; p <= maxPage; p++ {
+			items := pageMap[p]
+			if len(items) == 0 {
+				break
 			}
-			seen[b.GoodreadsID] = true
-			books = append(books, b)
-		}
-
-		// Goodreads returns up to 200 items/page; fewer means last page
-		if len(items) < 200 {
-			break
+			books = append(books, itemsToBooks(items)...)
+			if len(items) < 200 {
+				break
+			}
 		}
 	}
 
-	slog.Info("goodreads fetch complete", "total_books", len(books))
-	return books, nil
+	// Deduplicate by goodreads ID.
+	seen := make(map[string]bool, len(books))
+	deduped := books[:0]
+	for _, b := range books {
+		if !seen[b.GoodreadsID] {
+			seen[b.GoodreadsID] = true
+			deduped = append(deduped, b)
+		}
+	}
+
+	slog.Info("goodreads fetch complete", "total_books", len(deduped))
+	return deduped, nil
+}
+
+// itemsToBooks converts a slice of grItem to models.Book, upscaling cover URLs.
+func itemsToBooks(items []grItem) []models.Book {
+	out := make([]models.Book, 0, len(items))
+	for _, item := range items {
+		out = append(out, itemToBook(item))
+	}
+	return out
 }
 
 func (s *GoodreadsService) fetchPage(ctx context.Context, feedURL string) ([]grItem, error) {
@@ -126,7 +180,6 @@ func buildFeedURL(userID, shelf string, page int) string {
 }
 
 // stripHTML removes HTML tags and collapses whitespace, returning plain text.
-// It also HTML-entity-decodes the most common entities Goodreads uses.
 func stripHTML(s string) string {
 	s = reHTMLTag.ReplaceAllString(s, " ")
 	s = strings.NewReplacer(
@@ -146,7 +199,6 @@ func truncate(s string, maxRunes int) string {
 	if len(runes) <= maxRunes {
 		return s
 	}
-	// Walk back to the last word boundary so we don't cut mid-word.
 	cut := maxRunes
 	for cut > 0 && runes[cut-1] != ' ' {
 		cut--
@@ -157,15 +209,7 @@ func truncate(s string, maxRunes int) string {
 	return strings.TrimRight(string(runes[:cut]), " ") + "…"
 }
 
-// extractReview pulls out the user's review text from a Goodreads RSS
-// <description> CDATA block.  The block looks like:
-//
-//	author: X<br/>name: Y<br/>... review: USER TEXT HERE<br/><div>...</div>
-//
-// We grab only the text that follows "review: ".  If the user wrote nothing,
-// we return an empty string so no description is shown on the card.
 func extractReview(rawHTML string) string {
-	// Text after the literal "review: " (stripped of any HTML)
 	stripped := stripHTML(rawHTML)
 	if idx := strings.Index(stripped, "review: "); idx >= 0 {
 		after := strings.TrimSpace(stripped[idx+8:])
@@ -174,6 +218,19 @@ func extractReview(rawHTML string) string {
 		}
 	}
 	return ""
+}
+
+// upscaleCoverURL bumps low-res Goodreads thumbnails to a larger size and
+// forces HTTPS.
+func upscaleCoverURL(u string) string {
+	if u == "" {
+		return ""
+	}
+	// Force HTTPS.
+	u = strings.Replace(u, "http://", "https://", 1)
+	// Goodreads low-res pattern: _SX98_ → _SY475_ (larger cached size).
+	u = strings.Replace(u, "_SX98_", "_SY475_", 1)
+	return u
 }
 
 func itemToBook(item grItem) models.Book {
@@ -187,27 +244,18 @@ func itemToBook(item grItem) models.Book {
 		b.Description = truncate(raw, 300)
 	}
 
-	// Prefer large image, fall back to standard image
+	// Prefer large image, fall back to standard image, then upscale.
 	if u := strings.TrimSpace(item.BookLargeImageURL); u != "" {
-		b.CoverURL = u
+		b.CoverURL = upscaleCoverURL(u)
 	} else if u := strings.TrimSpace(item.BookImageURL); u != "" {
-		b.CoverURL = u
+		b.CoverURL = upscaleCoverURL(u)
 	}
 
-	// Book ID from dedicated field
+	// Book ID from dedicated field — use this as the canonical cache key.
+	// Do NOT fall back to the review ID: caching by review ID would create
+	// duplicate cache entries for the same book across different users.
 	if id := strings.TrimSpace(item.BookID); id != "" {
 		b.GoodreadsID = id
-	}
-
-	// Fall back: parse review ID out of GUID
-	// GUID looks like: https://www.goodreads.com/review/show/8426975079?utm_medium=api&utm_source=rss
-	if b.GoodreadsID == "" && item.GUID != "" {
-		raw := item.GUID
-		if idx := strings.Index(raw, "?"); idx != -1 {
-			raw = raw[:idx]
-		}
-		parts := strings.Split(raw, "/")
-		b.GoodreadsID = parts[len(parts)-1]
 	}
 
 	if v, err := strconv.ParseFloat(strings.TrimSpace(item.AverageRating), 64); err == nil {
