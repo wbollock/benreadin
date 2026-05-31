@@ -14,9 +14,23 @@ EnvironmentFile=/opt/benreadin/.env
 Restart=on-failure
 RestartSec=5
 
-# Harden a bit
-NoNewPrivileges=true
-PrivateTmp=true
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/benreadin/data
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallArchitectures=native
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+PrivateDevices=yes
 
 [Install]
 WantedBy=multi-user.target

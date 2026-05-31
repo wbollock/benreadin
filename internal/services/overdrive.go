@@ -12,6 +12,8 @@ import (
 	"github.com/wbollock/benreadin/internal/models"
 )
 
+const thunderRetryDelay = 250 * time.Millisecond
+
 const thunderBase = "https://thunder.api.overdrive.com/v2/libraries/%s/media"
 
 // OverDriveService queries the OverDrive Thunder API for library availability.
@@ -156,6 +158,25 @@ func (s *OverDriveService) fetchThunder(ctx context.Context, libraryKey, query s
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("thunder API request: %w", err)
+	}
+
+	if resp.StatusCode >= 500 {
+		// Retry once after a short pause on transient server errors.
+		resp.Body.Close()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(thunderRetryDelay):
+		}
+		req2, err2 := http.NewRequestWithContext(ctx, http.MethodGet, req.URL.String(), nil)
+		if err2 != nil {
+			return nil, err2
+		}
+		req2.Header.Set("User-Agent", "benreadin/1.0")
+		resp, err = s.client.Do(req2)
+		if err != nil {
+			return nil, fmt.Errorf("thunder API retry: %w", err)
+		}
 	}
 	defer resp.Body.Close()
 

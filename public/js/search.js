@@ -19,10 +19,11 @@
   // ---- Pre-populate libraries from recent usage ----
   loadRecentLibs().forEach(lib => addLibrary(lib.key, lib.name));
 
-  // ---- Example shelf button ----
+  // ---- Example shelf link ----
   if (exampleBtn) {
-    exampleBtn.addEventListener('click', () => {
-      urlInput.value = 'https://www.goodreads.com/user/show/97106512-william';
+    exampleBtn.addEventListener('click', e => {
+      e.preventDefault();
+      urlInput.value = '97106512-william';
       urlInput.focus();
       clearError();
     });
@@ -118,8 +119,8 @@
       chip.className = 'chip';
       chip.innerHTML =
         `<span class="chip-label">${escHtml(displayName(lib.key, lib.name))}</span>` +
-        `<button class="chip-edit" data-key="${escHtml(lib.key)}" title="Rename">&#9998;</button>` +
-        `<button class="chip-remove" data-key="${escHtml(lib.key)}" title="Remove">&times;</button>`;
+        `<button class="chip-edit" data-key="${escHtml(lib.key)}" title="Rename" aria-label="Rename ${escHtml(displayName(lib.key, lib.name))}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>` +
+        `<button class="chip-remove" data-key="${escHtml(lib.key)}" title="Remove" aria-label="Remove ${escHtml(displayName(lib.key, lib.name))}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
       chipWrap.insertBefore(chip, chipInput);
     });
   }
@@ -262,11 +263,7 @@
     acIndex = -1;
   }
 
-  // ---- Default library ----
-  // Pre-populate Free Library of Philadelphia if no libraries are set yet.
-  if (libraries.length === 0) {
-    addLibrary('freelibrary', 'Free Library of Philadelphia');
-  }
+  // No default library — start with an empty form so users pick their own.
 
   // ---- URL paste detection: auto-fill libraries from OverReader URL ----
 

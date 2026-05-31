@@ -163,6 +163,11 @@ type priceResult struct {
 	hardcover float64
 }
 
+// searchByISBN queries only the Books index. Kindle ASINs are extracted later
+// from the GetItems response if a format match exists. Two separate
+// SearchItems calls per book (Books + KindleStore) cost too many PA-API
+// request units at scale — omitting the KindleStore call halves the usage.
+// Books that have a Kindle edition still appear in the Books index.
 func (s *AmazonService) searchByISBN(ctx context.Context, isbn string) (asin, kindleASIN string, err error) {
 	body := paSearchRequest{
 		Keywords:    isbn,
@@ -187,24 +192,8 @@ func (s *AmazonService) searchByISBN(ctx context.Context, isbn string) (asin, ki
 	}
 
 	asin = resp.SearchResult.Items[0].ASIN
-
-	// Also search for Kindle edition
-	kindleBody := paSearchRequest{
-		Keywords:    isbn,
-		SearchIndex: "KindleStore",
-		Resources:   []string{"ItemInfo.Title"},
-		PartnerTag:  s.cfg.PartnerTag,
-		PartnerType: "Associates",
-		Marketplace: s.cfg.Marketplace,
-	}
-	var kindleResp paSearchResponse
-	if err := s.paCall(ctx, "/paapi5/searchitems", kindleBody, &kindleResp); err == nil {
-		if len(kindleResp.SearchResult.Items) > 0 {
-			kindleASIN = kindleResp.SearchResult.Items[0].ASIN
-		}
-	}
-
-	return asin, kindleASIN, nil
+	// kindleASIN is left empty; the UI falls back to an Amazon search URL.
+	return asin, "", nil
 }
 
 func (s *AmazonService) getItemPrices(ctx context.Context, asin, kindleASIN string) (*priceResult, error) {

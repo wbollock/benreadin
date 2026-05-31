@@ -29,11 +29,12 @@ const (
 
 // recCandidate is a book surfaced from Open Library subject search.
 type recCandidate struct {
-	title     string
-	author    string
-	isbn13    string
-	coverURL  string
-	becauseOf string
+	title          string
+	author         string
+	isbn13         string
+	coverURL       string
+	becauseOf      string
+	becauseSubject string
 }
 
 // recResult pairs a resolved recommendation with a success flag.
@@ -192,6 +193,7 @@ func (s *RecommendationService) FindRecommendations(
 					ISBN13:         c.isbn13,
 					LibraryResults: libResults,
 					BecauseOfTitle: c.becauseOf,
+					BecauseSubject: c.becauseSubject,
 				},
 			}
 		}(c)
@@ -286,9 +288,10 @@ func (s *RecommendationService) fetchSimilar(ctx context.Context, b models.Book)
 		// ISBN is not available from the subjects endpoint; OverDrive will fall back
 		// to a title+author search automatically.
 		out = append(out, recCandidate{
-			title:    w.Title,
-			author:   author,
-			coverURL: cover,
+			title:          w.Title,
+			author:         author,
+			coverURL:       cover,
+			becauseSubject: subject,
 		})
 	}
 	return out, nil

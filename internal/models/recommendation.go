@@ -9,6 +9,8 @@ type Recommendation struct {
 	Description    string          `json:"description"`
 	ISBN13         string          `json:"isbn13"`
 	LibraryResults []LibraryResult `json:"library_results"`
-	// The shelf book that triggered this recommendation
+	// The shelf book that triggered this recommendation.
 	BecauseOfTitle string `json:"because_of_title"`
+	// The Open Library subject that linked the shelf book to this recommendation.
+	BecauseSubject string `json:"because_subject,omitempty"`
 }

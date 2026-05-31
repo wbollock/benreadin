@@ -105,7 +105,9 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	// no-transform stops intermediaries (carrier proxies, CDNs) from buffering
+	// or recompressing the stream, which would defeat per-event flushing.
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
@@ -120,6 +122,16 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 		sseMu.Unlock()
 	}
+
+	// Some mobile browsers (notably iOS Safari) and carrier proxies won't surface
+	// the response to EventSource until a minimum number of bytes has arrived. The
+	// first real event is tiny and FetchShelf then blocks for seconds, so without
+	// this the client freezes on "Starting…". A 2KB comment shoves past that
+	// threshold and forces an immediate flush.
+	sseMu.Lock()
+	fmt.Fprintf(w, ":%s\n\n", strings.Repeat(" ", 2048))
+	flusher.Flush()
+	sseMu.Unlock()
 
 	ctx := r.Context()
 
