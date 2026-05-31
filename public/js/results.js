@@ -12,6 +12,7 @@
   const recsPanel      = document.getElementById('recs-panel');
   const recsGrid       = document.getElementById('recs-grid');
   const recsToggle     = document.getElementById('recs-toggle');
+  const loadingDetail  = document.getElementById('loading-detail');
 
   // All received book events, in arrival order (= shelf order).
   const allBooks = [];
@@ -22,8 +23,8 @@
   let completedBooks = 0;
 
   const activeFilters = new Set();
-  const FILTER_MODE_KEY = 'benreadin_filter_mode';
-  let filterMode = localStorage.getItem(FILTER_MODE_KEY) || 'or';
+  // Availability chips are mutually-exclusive states; the rest narrow the result.
+  const AVAILABILITY_FILTERS = ['available', 'wait', 'not_found'];
   const SORT_KEY = 'benreadin_sort';
   let activeSort = localStorage.getItem(SORT_KEY) || 'available_first';
 
@@ -33,6 +34,7 @@
     errorBanner.textContent = msg;
     errorBanner.classList.add('visible');
     setProgress(0, msg);
+    hideLoadingDetail();
   }
 
   let progressRaf = null;
@@ -42,6 +44,23 @@
       progressBar.style.width = Math.min(100, pct) + '%';
       if (label !== undefined) progressLabel.textContent = label;
     });
+  }
+
+  // Show what's being checked during the initial shelf fetch, so the wait
+  // isn't a blank skeleton screen. Cleared once real book cards arrive.
+  function showLoadingDetail() {
+    if (!loadingDetail || libraries.length === 0) return;
+    const pills = libraries
+      .map(key => `<span class="loading-lib">${escHtml(window.getLibName(key))}</span>`)
+      .join('');
+    const noun = libraries.length === 1 ? 'library' : 'libraries';
+    loadingDetail.innerHTML =
+      `<span class="loading-detail-label">Checking ${libraries.length} ${noun}:</span>${pills}`;
+    loadingDetail.classList.remove('hidden');
+  }
+
+  function hideLoadingDetail() {
+    if (loadingDetail) loadingDetail.classList.add('hidden');
   }
 
   // ---- Filter / Sort logic ----
@@ -77,9 +96,16 @@
 
   function filterBook(event) {
     if (activeFilters.size === 0) return true;
-    const filters = [...activeFilters];
-    if (filterMode === 'and') return filters.every(f => bookMatchesFilter(event, f));
-    return filters.some(f => bookMatchesFilter(event, f));
+    // Availability chips (available / on-hold / not-found) are mutually exclusive,
+    // so a book matching ANY selected one qualifies on that axis.
+    const availSelected = AVAILABILITY_FILTERS.filter(f => activeFilters.has(f));
+    if (availSelected.length && !availSelected.some(f => bookMatchesFilter(event, f))) {
+      return false;
+    }
+    // Attribute chips narrow further: every selected one must match (AND).
+    if (activeFilters.has('kindle') && !bookMatchesFilter(event, 'kindle')) return false;
+    if (activeFilters.has('gutenberg') && !bookMatchesFilter(event, 'gutenberg')) return false;
+    return true;
   }
 
   function sortedBooks() {
@@ -177,13 +203,6 @@
         btn.classList.toggle('active', activeFilters.has(btn.dataset.filter));
       }
     });
-    const modeToggle = document.getElementById('filter-mode-toggle');
-    if (modeToggle) {
-      modeToggle.style.visibility = activeFilters.size >= 2 ? 'visible' : 'hidden';
-      modeToggle.querySelectorAll('.filter-mode-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.mode === filterMode);
-      });
-    }
   }
 
   filterBtns.forEach(btn => {
@@ -205,15 +224,6 @@
   sortSelect.addEventListener('change', () => {
     activeSort = sortSelect.value;
     localStorage.setItem(SORT_KEY, activeSort);
-    applyView();
-  });
-
-  document.getElementById('filter-mode-toggle').addEventListener('click', e => {
-    const btn = e.target.closest('.filter-mode-btn');
-    if (!btn) return;
-    filterMode = btn.dataset.mode;
-    localStorage.setItem(FILTER_MODE_KEY, filterMode);
-    syncFilterUI();
     applyView();
   });
 
@@ -361,6 +371,7 @@
     showSkeletons(skeletonCount);
     progressBar.classList.add('indeterminate');
     setProgress(0, 'Starting…');
+    showLoadingDetail();
 
     const p = new URLSearchParams(baseParams);
     if (refresh) p.set('refresh', 'true');
@@ -384,6 +395,7 @@
 
     es.addEventListener('book_stubs', e => {
       clearSkeletons();
+      hideLoadingDetail();
       const {books: stubs} = JSON.parse(e.data);
       const frag = document.createDocumentFragment();
       stubs.forEach((book, i) => {

@@ -68,6 +68,7 @@
           <div class="progress-bar-fill" id="progress-bar"></div>
         </div>
         <div class="progress-label" id="progress-label" aria-live="polite">Starting…</div>
+        <div class="loading-detail" id="loading-detail" aria-live="polite"></div>
       </div>
 
       <div id="error-banner" class="error-banner" role="alert" aria-live="assertive"></div>
@@ -102,10 +103,6 @@
               <button class="filter-chip" data-filter="not_found">Not on Libby</button>
               <button class="filter-chip filter-chip-kindle" data-filter="kindle">Kindle</button>
               <button class="filter-chip filter-chip-gutenberg" data-filter="gutenberg">Free (Gutenberg)</button>
-            </div>
-            <div class="filter-mode-toggle" id="filter-mode-toggle" title="Match any selected filter (OR) or all selected filters (AND)">
-              <button class="filter-mode-btn" data-mode="or">Any</button>
-              <button class="filter-mode-btn" data-mode="and">All</button>
             </div>
           </div>
           <!-- Sort -->

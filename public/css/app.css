@@ -619,6 +619,39 @@ input::placeholder { color: var(--text-subtle); }
   font-weight: 500;
 }
 
+/* Loading detail: shows what's being checked during the initial shelf fetch. */
+.loading-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: .75rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  max-height: 60px;
+  opacity: 1;
+  transition: max-height .35s ease, opacity .25s ease, margin .35s ease;
+}
+.loading-detail:empty,
+.loading-detail.hidden {
+  max-height: 0;
+  opacity: 0;
+  margin: 0;
+}
+.loading-detail .loading-detail-label {
+  font-weight: 500;
+}
+.loading-lib {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 100px;
+  background: var(--border-soft);
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 /* ================================================================
    RESULTS PAGE STATUS
    ================================================================ */
@@ -962,30 +995,6 @@ input::placeholder { color: var(--text-subtle); }
 .filter-chip-gutenberg:hover { border-color: var(--green); color: var(--green); background: var(--green-bg); }
 .filter-chip-gutenberg.active { background: var(--green); border-color: var(--green); color: #fff; }
 
-.filter-mode-toggle {
-  display: flex;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  visibility: hidden;
-  flex-shrink: 0;
-}
-.filter-mode-btn {
-  padding: 4px 10px;
-  border: none;
-  background: var(--surface);
-  color: var(--text-muted);
-  font-family: var(--font);
-  font-size: .75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition);
-  white-space: nowrap;
-}
-.filter-mode-btn:not(:last-child) { border-right: 1px solid var(--border); }
-.filter-mode-btn.active { background: var(--accent); color: #fff; }
-.filter-mode-btn:hover:not(.active) { background: var(--accent-bg); color: var(--accent); }
-
 .filter-select {
   padding: 5px 10px;
   border: 1px solid var(--border);
@@ -1262,16 +1271,16 @@ input::placeholder { color: var(--text-subtle); }
   .book-cover-placeholder { width: 64px; height: 96px; }
   .recs-grid { grid-template-columns: 1fr; }
   .filter-bar { gap: 9px; flex-direction: column; align-items: flex-start; }
-  .filter-group { width: 100%; }
+  .filter-group { width: 100%; align-items: flex-start; }
+  /* Wrap chips onto multiple rows instead of a cramped horizontal scroll —
+     all options stay visible and each is a comfortable tap target. */
   .filter-chips {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x mandatory;
-    padding-bottom: 4px;
-    max-width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
   }
-  .filter-chip { scroll-snap-align: start; }
+  .filter-chip { padding: 8px 14px; font-size: .8rem; }
+  .filter-label { padding-top: 9px; }
   .filter-group[style*="margin-left:auto"] { margin-left: 0 !important; width: 100%; }
   .filter-select { width: 100%; }
   .badge { font-size: .78rem; padding: 3px 9px; }
