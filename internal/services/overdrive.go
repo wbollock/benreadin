@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/wbollock/benreadin/internal/metrics"
 	"github.com/wbollock/benreadin/internal/models"
 )
 
@@ -82,6 +83,7 @@ func (s *OverDriveService) CheckAvailability(ctx context.Context, book models.Bo
 		return s.checkUncached(ctx, book, libraryKey, query)
 	})
 	if err != nil {
+		metrics.UpstreamErrorsTotal.WithLabelValues("overdrive").Inc()
 		return models.LibraryResult{LibraryKey: libraryKey, Status: models.StatusNotFound}, err
 	}
 	return v.(models.LibraryResult), nil

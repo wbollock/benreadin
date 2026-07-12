@@ -6,7 +6,18 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/wbollock/benreadin/internal/metrics"
 )
+
+// observeCache records a cache lookup outcome for /metrics.
+func observeCache(cache string, hit bool) {
+	result := "miss"
+	if hit {
+		result = "hit"
+	}
+	metrics.CacheRequestsTotal.WithLabelValues(cache, result).Inc()
+}
 
 // CacheService provides TTL-aware JSON caching backed by SQLite.
 type CacheService struct {
@@ -30,11 +41,13 @@ func (c *CacheService) GetLibrary(libraryKey, query string, out interface{}) (bo
 		libraryKey, query, c.libraryTTL,
 	).Scan(&jsonStr)
 	if err == sql.ErrNoRows {
+		observeCache("library", false)
 		return false, nil
 	}
 	if err != nil {
 		return false, fmt.Errorf("cache get library: %w", err)
 	}
+	observeCache("library", true)
 	return true, json.Unmarshal([]byte(jsonStr), out)
 }
 
@@ -185,11 +198,13 @@ func (c *CacheService) GetShelf(cacheKey string, out interface{}) (bool, error) 
 		cacheKey, c.shelfTTL,
 	).Scan(&jsonStr)
 	if err == sql.ErrNoRows {
+		observeCache("shelf", false)
 		return false, nil
 	}
 	if err != nil {
 		return false, fmt.Errorf("cache get shelf: %w", err)
 	}
+	observeCache("shelf", true)
 	return true, json.Unmarshal([]byte(jsonStr), out)
 }
 

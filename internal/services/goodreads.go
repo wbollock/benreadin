@@ -14,9 +14,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/wbollock/benreadin/internal/metrics"
 	"github.com/wbollock/benreadin/internal/models"
 )
 
@@ -103,8 +105,11 @@ func (s *GoodreadsService) FetchShelf(ctx context.Context, userID, shelf string,
 	// error if the leader's context is canceled, which is acceptable at this
 	// scale (the client just retries).
 	v, err, _ := s.flight.Do(cacheKey, func() (interface{}, error) {
+		timer := prometheus.NewTimer(metrics.ShelfFetchDuration)
 		books, err := s.fetchShelfPages(ctx, userID, shelf)
+		timer.ObserveDuration()
 		if err != nil {
+			metrics.UpstreamErrorsTotal.WithLabelValues("goodreads").Inc()
 			return nil, err
 		}
 		if s.cache != nil {

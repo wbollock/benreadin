@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wbollock/benreadin/internal/metrics"
 	"github.com/wbollock/benreadin/internal/models"
 	"github.com/wbollock/benreadin/internal/services"
 	"golang.org/x/sync/semaphore"
@@ -121,6 +122,11 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	metrics.ActiveStreams.Inc()
+	defer metrics.ActiveStreams.Dec()
+	outcome := "error"
+	defer func() { metrics.SearchesTotal.WithLabelValues(outcome).Inc() }()
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	// no-transform stops intermediaries (carrier proxies, CDNs) from buffering
 	// or recompressing the stream, which would defeat per-event flushing.
@@ -210,6 +216,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(books) == 0 {
+		outcome = "ok"
 		sendEvent("done", map[string]interface{}{
 			"total":   0,
 			"message": "No books found — the shelf may be empty, or the Goodreads profile may be private (Settings → Privacy).",
@@ -285,6 +292,9 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		}
 		toFetch = append(toFetch, book)
 	}
+
+	metrics.BooksCheckedTotal.WithLabelValues("cache").Add(float64(len(books) - len(toFetch)))
+	metrics.BooksCheckedTotal.WithLabelValues("fetched").Add(float64(len(toFetch)))
 
 	// Phase 3: check availability for each cache-miss book concurrently and
 	// stream its "book" event the moment the OverDrive checks finish. The slow
@@ -365,6 +375,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 				azResult, err = h.amazon.GetPrices(enrichCtx, enriched)
 				h.azSem.Release(1)
 				if err != nil {
+					metrics.UpstreamErrorsTotal.WithLabelValues("amazon").Inc()
 					slog.Warn("amazon prices failed", "book", enriched.Title, "err", err)
 				}
 			}
@@ -400,6 +411,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 	for res := range resultCh {
 		if ctx.Err() != nil {
+			outcome = "canceled"
 			return
 		}
 		completedCount++
@@ -426,11 +438,13 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 	for ev := range updateCh {
 		if ctx.Err() != nil {
+			outcome = "canceled"
 			return
 		}
 		sendEvent("book_update", ev)
 	}
 
+	outcome = "ok"
 	sendEvent("done", map[string]interface{}{
 		"total":   len(books),
 		"message": fmt.Sprintf("Done — checked %d books", len(books)),

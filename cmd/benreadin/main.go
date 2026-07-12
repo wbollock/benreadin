@@ -16,6 +16,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/wbollock/benreadin/internal/db"
 	"github.com/wbollock/benreadin/internal/handlers"
 	appmw "github.com/wbollock/benreadin/internal/middleware"
@@ -136,6 +137,10 @@ func main() {
 
 	// SSE: never compress; apply a request-rate limit per IP.
 	r.With(httprate.LimitByIP(10, time.Minute)).Get("/api/search", searchHandler.ServeHTTP)
+
+	// Prometheus metrics. Not rate-limited or compressed; if the instance is
+	// public, restrict this path at the reverse proxy.
+	r.Handle("/metrics", promhttp.Handler())
 
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
