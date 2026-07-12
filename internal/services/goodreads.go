@@ -32,7 +32,8 @@ type GoodreadsService struct {
 
 func NewGoodreadsService() *GoodreadsService {
 	return &GoodreadsService{
-		client: &http.Client{Timeout: 20 * time.Second},
+		// 4 matches FetchShelf's page-fetch concurrency.
+		client: newHTTPClient(20*time.Second, 4),
 	}
 }
 

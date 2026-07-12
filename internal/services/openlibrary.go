@@ -32,7 +32,7 @@ type OpenLibraryService struct {
 
 func NewOpenLibraryService() *OpenLibraryService {
 	return &OpenLibraryService{
-		client: &http.Client{Timeout: 8 * time.Second},
+		client: newHTTPClient(8*time.Second, olConcurrency),
 		sem:    semaphore.NewWeighted(olConcurrency),
 	}
 }

@@ -43,7 +43,7 @@ type AmazonService struct {
 func NewAmazonService(cfg AmazonConfig, cache *CacheService) *AmazonService {
 	return &AmazonService{
 		cfg:    cfg,
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: newHTTPClient(10*time.Second, 3),
 		cache:  cache,
 	}
 }

@@ -252,32 +252,28 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		toFetch = append(toFetch, book)
 	}
 
-	// Phase 3: enrich + check each cache-miss book concurrently, replacing their stubs.
-	// OL enrichment and OD availability checks run in parallel per book —
-	// OD uses whatever ISBN Goodreads provided (or title+author fallback) while
-	// OL enrichment fills in page count and a better ISBN in the background.
+	// Phase 3: check availability for each cache-miss book concurrently and
+	// stream its "book" event the moment the OverDrive checks finish. The slow
+	// metadata work — OpenLibrary enrichment (6-wide global cap) and Amazon
+	// prices (3-wide global cap, two sequential API calls per book) — runs
+	// afterwards per book and streams as "book_update" patches, so availability
+	// is never queued behind price lookups. On a large shelf that queue is
+	// minutes long; availability itself is only seconds.
 	resultCh := make(chan result, len(toFetch))
-	var wg sync.WaitGroup
+	updateCh := make(chan BookEvent, len(toFetch))
+	var availWg, fullWg sync.WaitGroup
 	for _, book := range toFetch {
 		book := book
-		wg.Add(1)
+		availWg.Add(1)
+		fullWg.Add(1)
 		go func() {
-			defer wg.Done()
+			defer fullWg.Done()
 
 			bookCtx, bookCancel := context.WithTimeout(ctx, 30*time.Second)
 			defer bookCancel()
 
-			// OL enrichment runs concurrently with OD checks.
-			var enrichedBook models.Book
-			var olWg sync.WaitGroup
-			olWg.Add(1)
-			go func() {
-				defer olWg.Done()
-				enriched := h.openLibrary.Enrich(bookCtx, []models.Book{book})
-				enrichedBook = enriched[0]
-			}()
-
-			// OD availability checks start immediately using current book data.
+			// OD availability checks use whatever ISBN Goodreads provided
+			// (or title+author fallback).
 			libResults := make([]models.LibraryResult, len(libraries))
 			for i := range libResults {
 				libResults[i] = models.LibraryResult{LibraryKey: libraries[i], Status: models.StatusNotFound}
@@ -303,46 +299,61 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 			}
 			libWg.Wait()
 
-			// Wait for OL enrichment to finish before assembling the result.
-			olWg.Wait()
-			book = enrichedBook
-
-			var azResult models.AmazonResult
-			if err := h.azSem.Acquire(bookCtx, 1); err == nil {
-				azResult, err = h.amazon.GetPrices(bookCtx, book)
-				h.azSem.Release(1)
-				if err != nil {
-					slog.Warn("amazon prices failed", "book", book.Title, "err", err)
-				}
-			}
-
 			gbResult := h.gutenberg.Lookup(book.Title, book.Author)
 
-			res := result{
+			resultCh <- result{
 				book:            book,
 				libraryResults:  libResults,
-				amazonResult:    azResult,
 				gutenbergResult: gbResult,
 			}
+			availWg.Done()
 
-			if bookCtx.Err() == nil && book.GoodreadsID != "" {
-				if err := h.cache.SetBook(book.GoodreadsID, libsKey, BookEvent{
-					Book:            res.book,
-					LibraryResults:  res.libraryResults,
-					AmazonResult:    res.amazonResult,
-					GutenbergResult: res.gutenbergResult,
-				}); err != nil {
-					slog.Warn("book cache set failed", "book", book.Title, "err", err)
+			// Enrichment: OL fills ISBN-13/page count (feeds a better Amazon
+			// lookup), then Amazon prices. Both queues drain slowly on large
+			// shelves, so this gets its own generous timeout independent of the
+			// 30s availability budget — under the old shared budget the tail of
+			// a big shelf timed out before ever reaching the Amazon semaphore.
+			enrichCtx, enrichCancel := context.WithTimeout(ctx, 3*time.Minute)
+			defer enrichCancel()
+
+			enriched := h.openLibrary.Enrich(enrichCtx, []models.Book{book})[0]
+
+			var azResult models.AmazonResult
+			if err := h.azSem.Acquire(enrichCtx, 1); err == nil {
+				azResult, err = h.amazon.GetPrices(enrichCtx, enriched)
+				h.azSem.Release(1)
+				if err != nil {
+					slog.Warn("amazon prices failed", "book", enriched.Title, "err", err)
 				}
 			}
 
-			resultCh <- res
+			full := BookEvent{
+				Book:            enriched,
+				LibraryResults:  libResults,
+				AmazonResult:    azResult,
+				GutenbergResult: gbResult,
+			}
+
+			if enrichCtx.Err() == nil && enriched.GoodreadsID != "" {
+				if err := h.cache.SetBook(enriched.GoodreadsID, libsKey, full); err != nil {
+					slog.Warn("book cache set failed", "book", enriched.Title, "err", err)
+				}
+			}
+
+			// Only patch the client if enrichment actually added something.
+			if enriched != book || azResult != (models.AmazonResult{}) {
+				updateCh <- full
+			}
 		}()
 	}
 
 	go func() {
-		wg.Wait()
+		availWg.Wait()
 		close(resultCh)
+	}()
+	go func() {
+		fullWg.Wait()
+		close(updateCh)
 	}()
 
 	for res := range resultCh {
@@ -360,6 +371,22 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 			Total:     len(books),
 			Completed: completedCount,
 		})
+	}
+
+	// All availability is on screen — let the client finish its progress UI
+	// while metadata/price patches keep streaming below.
+	if len(toFetch) > 0 && ctx.Err() == nil {
+		sendEvent("availability_done", map[string]interface{}{
+			"total":   len(books),
+			"message": fmt.Sprintf("Checked %d books — filling in details…", len(books)),
+		})
+	}
+
+	for ev := range updateCh {
+		if ctx.Err() != nil {
+			return
+		}
+		sendEvent("book_update", ev)
 	}
 
 	sendEvent("done", map[string]interface{}{

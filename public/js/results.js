@@ -373,6 +373,9 @@
 
   let activeES = null;
   let streamDone = false;
+  // Set once all availability results are on screen; enrichment patches
+  // (prices, page counts) may still be streaming after this.
+  let availabilityDone = false;
   let skeletonsCleared = false;
 
   const skeletonCount = Math.ceil(window.innerHeight / 140) + 2;
@@ -410,6 +413,7 @@
   function startStream(refresh) {
     if (activeES) activeES.close();
     streamDone = false;
+    availabilityDone = false;
     skeletonsCleared = false;
     resetState();
 
@@ -475,20 +479,51 @@
       resultsHeader.style.display = 'block';
     });
 
+    // All availability is on screen; prices/metadata keep patching in via
+    // "book_update" below. Finish the progress UI now — this is the moment the
+    // user has what they came for.
+    es.addEventListener('availability_done', e => {
+      const data = JSON.parse(e.data);
+      availabilityDone = true;
+      setProgress(100, data.message || 'Availability checked');
+      // Final sort pass — reorder existing elements without rebuilding HTML.
+      applyView();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      document.getElementById('recs-trigger').style.display = 'block';
+      createShortlink();
+    });
+
+    // Late enrichment patch (Amazon prices, page count, better ISBN/cover) for
+    // a book whose availability card is already rendered — swap it in place.
+    es.addEventListener('book_update', e => {
+      const event = JSON.parse(e.data);
+      const grId = event.book && event.book.goodreads_id;
+      if (!grId) return;
+      const idx = allBooks.findIndex(b => b.book && b.book.goodreads_id === grId);
+      if (idx === -1) return;
+      allBooks[idx] = event;
+      const oldEl = bookElements.get(grId);
+      const newEl = parseHTML(buildBookCard(event, filterBook(event)));
+      if (oldEl) oldEl.replaceWith(newEl);
+      bookElements.set(grId, newEl);
+    });
+
     es.addEventListener('done', e => {
       const data = JSON.parse(e.data);
       streamDone = true;
       setProgress(100, data.message || 'Done');
       es.close();
       saveResultsToCache(allBooks.slice());
-      // Final sort pass — reorder existing elements without rebuilding HTML.
-      applyView();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (!availabilityDone) {
+        // Fully-cached run: no availability_done was sent, so finish here.
+        applyView();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        document.getElementById('recs-trigger').style.display = 'block';
+        createShortlink();
+      }
       setTimeout(() => {
         document.getElementById('status-area').style.opacity = '0.4';
       }, 2000);
-      document.getElementById('recs-trigger').style.display = 'block';
-      createShortlink();
     });
 
     es.addEventListener('error', e => {
@@ -501,6 +536,15 @@
 
     es.onerror = () => {
       if (streamDone || es.readyState === EventSource.CLOSED) return;
+      if (availabilityDone) {
+        // Only the enrichment tail was cut off — everything the user came for
+        // is already rendered, so finish quietly instead of alarming them.
+        streamDone = true;
+        es.close();
+        saveResultsToCache(allBooks.slice());
+        setProgress(100, 'Done');
+        return;
+      }
       showError('Connection lost. Please try again.');
       es.close();
     };
