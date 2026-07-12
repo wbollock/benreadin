@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS libraries (
   website TEXT
 );
 
--- Full shelf search result cache (TTL 5 min by default)
+-- Parsed Goodreads shelf cache: []models.Book JSON keyed "userID|shelf"
+-- (TTL 5 min by default; skips RSS refetches on repeat searches)
 CREATE TABLE IF NOT EXISTS shelf_cache (
   id          INTEGER PRIMARY KEY,
   cache_key   TEXT NOT NULL UNIQUE,

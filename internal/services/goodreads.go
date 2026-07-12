@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/wbollock/benreadin/internal/models"
 )
@@ -28,12 +29,15 @@ const goodreadsRSSBase = "https://www.goodreads.com/review/list_rss/%s"
 // GoodreadsService fetches and parses a Goodreads shelf RSS feed.
 type GoodreadsService struct {
 	client *http.Client
+	cache  *CacheService // nil disables shelf caching (tests)
+	flight singleflight.Group
 }
 
-func NewGoodreadsService() *GoodreadsService {
+func NewGoodreadsService(cache *CacheService) *GoodreadsService {
 	return &GoodreadsService{
 		// 4 matches FetchShelf's page-fetch concurrency.
 		client: newHTTPClient(20*time.Second, 4),
+		cache:  cache,
 	}
 }
 
@@ -56,10 +60,48 @@ type grItem struct {
 	UserRating        string `xml:"user_rating"`
 }
 
-// FetchShelf paginates through a Goodreads RSS shelf and returns all books.
-// Page 1 is fetched first; if it is full (200 items), subsequent pages are
-// fetched concurrently (up to 4 at a time, capped at page 5 = 1000 books).
-func (s *GoodreadsService) FetchShelf(ctx context.Context, userID, shelf string) ([]models.Book, error) {
+// FetchShelf returns all books on a Goodreads shelf. Results are cached
+// (shelf_cache table, short TTL) so repeat searches — a shared shortlink, a
+// page reload, the prewarm scheduler — skip the RSS round trips; refresh
+// bypasses the cache read. Concurrent fetches of the same shelf are coalesced
+// into a single upstream request via singleflight.
+func (s *GoodreadsService) FetchShelf(ctx context.Context, userID, shelf string, refresh bool) ([]models.Book, error) {
+	cacheKey := userID + "|" + shelf
+	if !refresh && s.cache != nil {
+		var books []models.Book
+		if hit, err := s.cache.GetShelf(cacheKey, &books); err != nil {
+			slog.Warn("shelf cache read failed", "err", err)
+		} else if hit {
+			slog.Debug("shelf cache hit", "user", userID, "shelf", shelf)
+			return books, nil
+		}
+	}
+
+	// Coalesce concurrent fetches. Waiters share the leader's result — and its
+	// error if the leader's context is canceled, which is acceptable at this
+	// scale (the client just retries).
+	v, err, _ := s.flight.Do(cacheKey, func() (interface{}, error) {
+		books, err := s.fetchShelfPages(ctx, userID, shelf)
+		if err != nil {
+			return nil, err
+		}
+		if s.cache != nil {
+			if err := s.cache.SetShelf(cacheKey, books); err != nil {
+				slog.Warn("shelf cache write failed", "err", err)
+			}
+		}
+		return books, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.([]models.Book), nil
+}
+
+// fetchShelfPages paginates through a Goodreads RSS shelf. Page 1 is fetched
+// first; if it is full (200 items), subsequent pages are fetched concurrently
+// (up to 4 at a time, capped at page 5 = 1000 books).
+func (s *GoodreadsService) fetchShelfPages(ctx context.Context, userID, shelf string) ([]models.Book, error) {
 	// Fetch page 1 first to determine pagination needs.
 	page1, err := s.fetchPage(ctx, buildFeedURL(userID, shelf, 1))
 	if err != nil {

@@ -43,7 +43,7 @@ func (h *RecommendationsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Fetch the shelf so we know what books to base recommendations on.
-	books, err := h.goodreads.FetchShelf(ctx, parsed.UserID, parsed.Shelf)
+	books, err := h.goodreads.FetchShelf(ctx, parsed.UserID, parsed.Shelf, false)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 		return

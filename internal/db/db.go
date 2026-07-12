@@ -13,27 +13,33 @@ import (
 //go:embed schema.sql
 var schema string
 
-// ShelfCacheTTL is the default TTL for full shelf search result caches (5 minutes).
-const ShelfCacheTTL int64 = 300
-
 // Open opens (or creates) the SQLite database at path, runs migrations, and
 // purges stale cache rows older than the given TTLs.
-func Open(path string, libraryTTL, amazonTTL, bookTTL int64) (*sql.DB, error) {
+func Open(path string, libraryTTL, amazonTTL, bookTTL, shelfTTL int64) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create db dir: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000")
+	// modernc.org/sqlite only understands the _pragma=name(value) DSN form —
+	// mattn-style params (_journal_mode=WAL, _busy_timeout=…) are silently
+	// ignored, leaving the DB in journal_mode=delete with no busy timeout.
+	db, err := sql.Open("sqlite", path+
+		"?_pragma=journal_mode(WAL)"+
+		"&_pragma=busy_timeout(5000)"+
+		"&_pragma=foreign_keys(on)"+
+		"&_pragma=synchronous(normal)")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	db.SetMaxOpenConns(1)
+	// WAL allows readers concurrent with the single writer; busy_timeout
+	// serializes writer collisions instead of surfacing SQLITE_BUSY.
+	db.SetMaxOpenConns(8)
 
 	if err := migrate(db); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
-	if err := purgeStale(db, libraryTTL, amazonTTL, bookTTL); err != nil {
+	if err := purgeStale(db, libraryTTL, amazonTTL, bookTTL, shelfTTL); err != nil {
 		return nil, fmt.Errorf("purge stale: %w", err)
 	}
 
@@ -45,7 +51,7 @@ func migrate(db *sql.DB) error {
 	return err
 }
 
-func purgeStale(db *sql.DB, libraryTTL, amazonTTL, bookTTL int64) error {
+func purgeStale(db *sql.DB, libraryTTL, amazonTTL, bookTTL, shelfTTL int64) error {
 	_, err := db.Exec(
 		`DELETE FROM library_cache WHERE fetched_at <= (unixepoch() - ?)`,
 		libraryTTL,
@@ -62,7 +68,7 @@ func purgeStale(db *sql.DB, libraryTTL, amazonTTL, bookTTL int64) error {
 	}
 	_, err = db.Exec(
 		`DELETE FROM shelf_cache WHERE fetched_at <= (unixepoch() - ?)`,
-		ShelfCacheTTL,
+		shelfTTL,
 	)
 	if err != nil {
 		return err

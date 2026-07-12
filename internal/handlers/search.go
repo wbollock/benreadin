@@ -66,6 +66,7 @@ type SearchHandler struct {
 	cache           *services.CacheService
 	odSem           *semaphore.Weighted
 	azSem           *semaphore.Weighted
+	odPerSearch     int64
 }
 
 func NewSearchHandler(
@@ -76,8 +77,11 @@ func NewSearchHandler(
 	recs *services.RecommendationService,
 	gb *services.GutenbergService,
 	cache *services.CacheService,
-	odConcurrency, azConcurrency int64,
+	odConcurrency, odPerSearch, azConcurrency int64,
 ) *SearchHandler {
+	if odPerSearch <= 0 || odPerSearch > odConcurrency {
+		odPerSearch = odConcurrency
+	}
 	return &SearchHandler{
 		goodreads:       gr,
 		overdrive:       od,
@@ -88,6 +92,7 @@ func NewSearchHandler(
 		cache:           cache,
 		odSem:           semaphore.NewWeighted(odConcurrency),
 		azSem:           semaphore.NewWeighted(azConcurrency),
+		odPerSearch:     odPerSearch,
 	}
 }
 
@@ -180,7 +185,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	sendEvent("progress", ProgressEvent{Message: "Fetching your Goodreads shelf..."})
 
 	// Fetch books from Goodreads
-	books, err := h.goodreads.FetchShelf(ctx, parsed.UserID, parsed.Shelf)
+	books, err := h.goodreads.FetchShelf(ctx, parsed.UserID, parsed.Shelf, r.URL.Query().Get("refresh") == "true")
 	if err != nil {
 		sendEvent("error", map[string]string{"message": fmt.Sprintf("Failed to fetch Goodreads shelf: %s", err)})
 		return
@@ -237,19 +242,31 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	// client can render all placeholder cards at once — no drip, no waiting.
 	sendEvent("book_stubs", BookStubsEvent{Books: books})
 
-	// Phase 2: resolve cache hits immediately and collect misses for the pipeline.
+	// Phase 2: resolve cache hits immediately and collect misses for the
+	// pipeline. One batched query for the whole shelf — per-book lookups cost
+	// hundreds of round trips before the first cached card reaches the client.
+	var cachedEvents map[string]json.RawMessage
+	if !hardRefresh {
+		ids := make([]string, 0, len(books))
+		for _, book := range books {
+			if book.GoodreadsID != "" {
+				ids = append(ids, book.GoodreadsID)
+			}
+		}
+		var err error
+		if cachedEvents, err = h.cache.GetBooks(ids, libsKey); err != nil {
+			slog.Warn("book cache batch read failed", "err", err)
+		}
+	}
+
 	completedCount := 0
 	var toFetch []models.Book
 	for _, book := range books {
-		if !hardRefresh && book.GoodreadsID != "" {
-			var cached BookEvent
-			if hit, _ := h.cache.GetBook(book.GoodreadsID, libsKey, &cached); hit {
-				slog.Debug("book cache hit", "book", book.Title)
-				completedCount++
-				sendEvent("book", cached)
-				sendEvent("progress", ProgressEvent{Total: len(books), Completed: completedCount})
-				continue
-			}
+		if cached, ok := cachedEvents[book.GoodreadsID]; ok && book.GoodreadsID != "" {
+			completedCount++
+			sendEvent("book", cached)
+			sendEvent("progress", ProgressEvent{Total: len(books), Completed: completedCount})
+			continue
 		}
 		toFetch = append(toFetch, book)
 	}
@@ -263,6 +280,10 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	// minutes long; availability itself is only seconds.
 	resultCh := make(chan result, len(toFetch))
 	updateCh := make(chan BookEvent, len(toFetch))
+	// Fairness: the global odSem is first-come-first-served, so without a
+	// per-search ceiling one huge shelf occupies every slot and starves other
+	// users' searches until it drains.
+	searchSem := semaphore.NewWeighted(h.odPerSearch)
 	var availWg, fullWg sync.WaitGroup
 	for _, book := range toFetch {
 		book := book
@@ -287,6 +308,10 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 				libWg.Add(1)
 				go func() {
 					defer libWg.Done()
+					if err := searchSem.Acquire(bookCtx, 1); err != nil {
+						return
+					}
+					defer searchSem.Release(1)
 					if err := h.odSem.Acquire(bookCtx, 1); err != nil {
 						return
 					}

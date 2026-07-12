@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/wbollock/benreadin/internal/models"
 )
 
@@ -20,6 +22,7 @@ const thunderBase = "https://thunder.api.overdrive.com/v2/libraries/%s/media"
 type OverDriveService struct {
 	client *http.Client
 	cache  *CacheService
+	flight singleflight.Group
 }
 
 func NewOverDriveService(cache *CacheService) *OverDriveService {
@@ -56,12 +59,9 @@ type thunderResponse struct {
 
 // CheckAvailability returns availability for a book at a library.
 // It searches by ISBN first, falling back to "title author".
+// Concurrent checks for the same book+library — two users sharing a shortlink,
+// or prewarm overlapping a live search — are coalesced into one upstream call.
 func (s *OverDriveService) CheckAvailability(ctx context.Context, book models.Book, libraryKey string) (models.LibraryResult, error) {
-	result := models.LibraryResult{
-		LibraryKey: libraryKey,
-		Status:     models.StatusNotFound,
-	}
-
 	// Build query: prefer ISBN, fall back to title+author
 	query := book.BestISBN()
 	if query == "" {
@@ -76,6 +76,21 @@ func (s *OverDriveService) CheckAvailability(ctx context.Context, book models.Bo
 	}
 	if hit {
 		return cached, nil
+	}
+
+	v, err, _ := s.flight.Do(libraryKey+"|"+query, func() (interface{}, error) {
+		return s.checkUncached(ctx, book, libraryKey, query)
+	})
+	if err != nil {
+		return models.LibraryResult{LibraryKey: libraryKey, Status: models.StatusNotFound}, err
+	}
+	return v.(models.LibraryResult), nil
+}
+
+func (s *OverDriveService) checkUncached(ctx context.Context, book models.Book, libraryKey, query string) (models.LibraryResult, error) {
+	result := models.LibraryResult{
+		LibraryKey: libraryKey,
+		Status:     models.StatusNotFound,
 	}
 
 	resp, err := s.fetchThunder(ctx, libraryKey, query)

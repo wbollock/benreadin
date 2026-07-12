@@ -161,7 +161,7 @@ func (p *PrewarmService) runOnce(ctx context.Context) {
 // prewarmTarget refreshes the book cache for one shelf + library set and
 // returns (refreshed, stillFresh) book counts.
 func (p *PrewarmService) prewarmTarget(ctx context.Context, t PrewarmTarget) (int, int) {
-	books, err := p.goodreads.FetchShelf(ctx, t.UserID, t.Shelf)
+	books, err := p.goodreads.FetchShelf(ctx, t.UserID, t.Shelf, false)
 	if err != nil {
 		slog.Warn("prewarm: shelf fetch failed", "user", t.UserID, "shelf", t.Shelf, "err", err)
 		return 0, 0

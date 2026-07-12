@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -13,10 +14,11 @@ type CacheService struct {
 	libraryTTL int64
 	amazonTTL  int64
 	bookTTL    int64
+	shelfTTL   int64
 }
 
-func NewCacheService(db *sql.DB, libraryTTL, amazonTTL, bookTTL int64) *CacheService {
-	return &CacheService{db: db, libraryTTL: libraryTTL, amazonTTL: amazonTTL, bookTTL: bookTTL}
+func NewCacheService(db *sql.DB, libraryTTL, amazonTTL, bookTTL, shelfTTL int64) *CacheService {
+	return &CacheService{db: db, libraryTTL: libraryTTL, amazonTTL: amazonTTL, bookTTL: bookTTL, shelfTTL: shelfTTL}
 }
 
 // GetLibrary retrieves a cached library result. Returns (nil, nil) on miss.
@@ -116,6 +118,47 @@ func (c *CacheService) SetBook(goodreadsID, librariesKey string, value interface
 	return err
 }
 
+// GetBooks retrieves all fresh cached book events for the given goodreads IDs
+// in one query, returned as a map keyed by goodreads ID. IDs with no fresh
+// cache row are simply absent from the map.
+func (c *CacheService) GetBooks(goodreadsIDs []string, librariesKey string) (map[string]json.RawMessage, error) {
+	out := make(map[string]json.RawMessage, len(goodreadsIDs))
+	// SQLite's default variable limit is 999; chunk well under it.
+	const chunkSize = 500
+	for start := 0; start < len(goodreadsIDs); start += chunkSize {
+		chunk := goodreadsIDs[start:min(start+chunkSize, len(goodreadsIDs))]
+		placeholders := strings.Repeat("?,", len(chunk)-1) + "?"
+		args := make([]interface{}, 0, len(chunk)+2)
+		args = append(args, librariesKey, c.bookTTL)
+		for _, id := range chunk {
+			args = append(args, id)
+		}
+		rows, err := c.db.Query(
+			`SELECT goodreads_id, event_json FROM book_cache
+			 WHERE libraries = ? AND fetched_at > (unixepoch() - ?)
+			   AND goodreads_id IN (`+placeholders+`)`,
+			args...,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("cache get books: %w", err)
+		}
+		for rows.Next() {
+			var id, jsonStr string
+			if err := rows.Scan(&id, &jsonStr); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[id] = json.RawMessage(jsonStr)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+	return out, nil
+}
+
 // BookFetchedAt returns the fetch timestamp of a cached book result, ignoring
 // TTL. Returns found=false when no row exists at all.
 func (c *CacheService) BookFetchedAt(goodreadsID, librariesKey string) (int64, bool, error) {
@@ -131,6 +174,38 @@ func (c *CacheService) BookFetchedAt(goodreadsID, librariesKey string) (int64, b
 		return 0, false, fmt.Errorf("cache book fetched_at: %w", err)
 	}
 	return fetchedAt, true, nil
+}
+
+// GetShelf retrieves a cached parsed Goodreads shelf. Returns false on miss.
+func (c *CacheService) GetShelf(cacheKey string, out interface{}) (bool, error) {
+	var jsonStr string
+	err := c.db.QueryRow(
+		`SELECT events_json FROM shelf_cache
+		 WHERE cache_key = ? AND fetched_at > (unixepoch() - ?)`,
+		cacheKey, c.shelfTTL,
+	).Scan(&jsonStr)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("cache get shelf: %w", err)
+	}
+	return true, json.Unmarshal([]byte(jsonStr), out)
+}
+
+// SetShelf stores a parsed Goodreads shelf in the cache.
+func (c *CacheService) SetShelf(cacheKey string, value interface{}) error {
+	b, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	_, err = c.db.Exec(
+		`INSERT INTO shelf_cache (cache_key, events_json, fetched_at)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(cache_key) DO UPDATE SET events_json=excluded.events_json, fetched_at=excluded.fetched_at`,
+		cacheKey, string(b), time.Now().Unix(),
+	)
+	return err
 }
 
 // RecentSearch is one shelf + library set a user has searched.

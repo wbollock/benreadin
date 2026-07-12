@@ -37,7 +37,7 @@ func main() {
 		Level: slog.LevelInfo,
 	})))
 
-	database, err := db.Open(cfg.dbPath, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL)
+	database, err := db.Open(cfg.dbPath, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL, cfg.shelfTTL)
 	if err != nil {
 		slog.Error("failed to open database", "err", err)
 		os.Exit(1)
@@ -51,9 +51,9 @@ func main() {
 		return
 	}
 
-	cache := services.NewCacheService(database, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL)
+	cache := services.NewCacheService(database, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL, cfg.shelfTTL)
 
-	goodreadsSvc := services.NewGoodreadsService()
+	goodreadsSvc := services.NewGoodreadsService(cache)
 	overdriveSvc := services.NewOverDriveService(cache)
 	openLibrarySvc := services.NewOpenLibraryService()
 	gutenbergSvc := services.NewGutenbergService(database)
@@ -114,6 +114,7 @@ func main() {
 		gutenbergSvc,
 		cache,
 		cfg.odConcurrency,
+		cfg.odPerSearch,
 		cfg.azConcurrency,
 	)
 	librariesHandler := handlers.NewLibrariesHandler(database)
@@ -184,7 +185,9 @@ type config struct {
 	libraryTTL        int64
 	amazonTTL         int64
 	bookTTL           int64
+	shelfTTL          int64
 	odConcurrency     int64
+	odPerSearch       int64
 	azConcurrency     int64
 	amazonAccessKey   string
 	amazonSecretKey   string
@@ -204,7 +207,9 @@ func loadConfig() config {
 		libraryTTL:        envInt64("CACHE_TTL_LIBRARY_SECONDS", 7200),
 		amazonTTL:         envInt64("CACHE_TTL_AMAZON_SECONDS", 86400),
 		bookTTL:           envInt64("CACHE_TTL_BOOK_SECONDS", 7200),
+		shelfTTL:          envInt64("CACHE_TTL_SHELF_SECONDS", 300),
 		odConcurrency:     envInt64("CONCURRENCY_OVERDRIVE", 50),
+		odPerSearch:       envInt64("CONCURRENCY_OVERDRIVE_PER_SEARCH", 16),
 		azConcurrency:     envInt64("CONCURRENCY_AMAZON", 3),
 		amazonAccessKey:   os.Getenv("AMAZON_ACCESS_KEY"),
 		amazonSecretKey:   os.Getenv("AMAZON_SECRET_KEY"),
