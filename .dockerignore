@@ -1,0 +1,9 @@
+.git
+.claude
+.github
+data
+.env*
+*.md
+Dockerfile
+docker-compose.yml
+benreadin.service
