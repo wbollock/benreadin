@@ -80,6 +80,27 @@
             </div>
 
             <div class="form-group">
+              <label for="shelf-select">Shelf <span class="label-hint">which Goodreads shelf to check</span></label>
+              <div class="shelf-row">
+                <select id="shelf-select" class="filter-select">
+                  <option value="to-read" selected>To Read</option>
+                  <option value="currently-reading">Currently Reading</option>
+                  <option value="read">Read</option>
+                  <option value="__custom__">Custom shelf…</option>
+                </select>
+                <input
+                  type="text"
+                  id="shelf-custom"
+                  placeholder="shelf name, e.g. sci-fi"
+                  autocomplete="off"
+                  spellcheck="false"
+                  style="display:none"
+                  aria-label="Custom shelf name"
+                >
+              </div>
+            </div>
+
+            <div class="form-group">
               <label>Libraries <span class="label-hint">type a name or key, or click to browse</span></label>
               <div class="library-input-wrap">
                 <div class="library-chips" id="library-chips" tabindex="0">

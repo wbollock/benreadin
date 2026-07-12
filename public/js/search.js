@@ -3,6 +3,8 @@
 (function () {
   const form        = document.getElementById('search-form');
   const urlInput    = document.getElementById('shelf-url');
+  const shelfSelect = document.getElementById('shelf-select');
+  const shelfCustom = document.getElementById('shelf-custom');
   const exampleBtn  = document.getElementById('example-shelf-btn');
   const chipWrap   = document.getElementById('library-chips');
   const chipInput  = document.getElementById('library-input');
@@ -51,6 +53,36 @@
     } catch { return []; }
   }
 
+  // ---- Shelf picker ----
+  // "Custom shelf…" swaps in a free-text input; standard shelves use the select.
+  const CUSTOM_SHELF = '__custom__';
+
+  shelfSelect.addEventListener('change', () => {
+    const custom = shelfSelect.value === CUSTOM_SHELF;
+    shelfCustom.style.display = custom ? '' : 'none';
+    if (custom) shelfCustom.focus();
+  });
+
+  function currentShelf() {
+    if (shelfSelect.value === CUSTOM_SHELF) {
+      return shelfCustom.value.trim() || 'to-read';
+    }
+    return shelfSelect.value;
+  }
+
+  function setShelfPicker(shelf) {
+    if (!shelf) return;
+    const standard = [...shelfSelect.options].some(o => o.value === shelf);
+    if (standard) {
+      shelfSelect.value = shelf;
+      shelfCustom.style.display = 'none';
+    } else {
+      shelfSelect.value = CUSTOM_SHELF;
+      shelfCustom.value = shelf;
+      shelfCustom.style.display = '';
+    }
+  }
+
   // ---- Example shelf link ----
   if (exampleBtn) {
     exampleBtn.addEventListener('click', e => {
@@ -82,9 +114,10 @@
     try { return JSON.parse(storage.get(LAST_SEARCH_KEY) || 'null'); } catch { return null; }
   }
 
-  function saveLastSearch(url, libs) {
+  function saveLastSearch(url, libs, shelf) {
     storage.set(LAST_SEARCH_KEY, JSON.stringify({
       url,
+      shelf,
       libs: libs.map(l => ({ key: l.key, name: l.name })),
     }));
   }
@@ -319,6 +352,12 @@
         const keys = match[1].split(',').map(k => k.trim()).filter(Boolean);
         keys.forEach(k => addLibrary(k, k));
       }
+      // Sync the shelf picker with a pasted shelf-specific URL so the picker's
+      // default doesn't silently override it on submit.
+      const grShelf = val.match(/[?&]shelf=([^&#]+)/);
+      const orShelf = val.match(/overreader\.com\/[^#?]*\/shelf\/([^/?#]+)/);
+      if (grShelf) setShelfPicker(decodeURIComponent(grShelf[1]));
+      else if (orShelf) setShelfPicker(decodeURIComponent(orShelf[1]));
     }, 50);
   });
 
@@ -340,13 +379,17 @@
     if (!url) { showError('Please enter a Goodreads or OverReader shelf URL.'); return; }
     if (libraries.length === 0) { showError('Add at least one library to check.'); return; }
 
+    const shelf = currentShelf();
     const aliases = loadAliases();
     saveRecentLibs(libraries);
-    saveLastSearch(url, libraries);
+    saveLastSearch(url, libraries, shelf);
     setCookie(USER_COOKIE, url);
     setCookie(LIBS_COOKIE, JSON.stringify(libraries.map(l => ({ key: l.key, name: l.name }))));
     const params = new URLSearchParams();
     params.set('url', url);
+    // Only send an explicit shelf when it differs from the default, so a
+    // pasted shelf-specific URL isn't overridden by an untouched picker.
+    if (shelf && shelf !== 'to-read') params.set('shelf', shelf);
     libraries.forEach(l => {
       params.append('libraries', l.key);
       // Pass display name so results page can show it without a DB lookup.
@@ -366,6 +409,7 @@
   const rememberedUser = getCookie(USER_COOKIE);
   if (lastSearch && lastSearch.url) urlInput.value = lastSearch.url;
   else if (rememberedUser) urlInput.value = rememberedUser;
+  if (lastSearch && lastSearch.shelf) setShelfPicker(lastSearch.shelf);
 
   const cookieLibs = loadLastLibsCookie();
   const restoredLibs = (lastSearch && Array.isArray(lastSearch.libs) && lastSearch.libs.length)

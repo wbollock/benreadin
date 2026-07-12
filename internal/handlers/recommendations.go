@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/wbollock/benreadin/internal/services"
 )
@@ -33,6 +34,9 @@ func (h *RecommendationsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
 		return
+	}
+	if shelf := strings.TrimSpace(r.URL.Query().Get("shelf")); shelf != "" {
+		parsed.Shelf = shelf
 	}
 	if len(libraries) == 0 {
 		libraries = parsed.Libraries

@@ -47,7 +47,26 @@ func Open(path string, libraryTTL, amazonTTL, bookTTL, shelfTTL int64) (*sql.DB,
 }
 
 func migrate(db *sql.DB) error {
-	_, err := db.Exec(schema)
+	if _, err := db.Exec(schema); err != nil {
+		return err
+	}
+	// ALTER TABLE isn't idempotent in SQLite, so column additions live here
+	// instead of schema.sql, guarded by a table_info existence check.
+	return addColumnIfMissing(db, "shortlinks", "shelf", "TEXT NOT NULL DEFAULT ''")
+}
+
+func addColumnIfMissing(db *sql.DB, table, column, decl string) error {
+	var n int
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, table, column,
+	).Scan(&n)
+	if err != nil {
+		return fmt.Errorf("inspect %s: %w", table, err)
+	}
+	if n > 0 {
+		return nil
+	}
+	_, err = db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, decl))
 	return err
 }
 

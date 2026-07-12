@@ -32,6 +32,7 @@ func (h *ShortenHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		URL       string   `json:"url"`
 		Libraries []string `json:"libraries"`
+		Shelf     string   `json:"shelf"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" {
 		http.Error(w, "invalid request", http.StatusBadRequest)
@@ -40,11 +41,11 @@ func (h *ShortenHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	libs := strings.Join(body.Libraries, ",")
 
-	// Reuse an existing token for the same url+libraries combo.
+	// Reuse an existing token for the same url+libraries+shelf combo.
 	var existing string
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT token FROM shortlinks WHERE url = ? AND libraries = ? LIMIT 1`,
-		body.URL, libs,
+		`SELECT token FROM shortlinks WHERE url = ? AND libraries = ? AND shelf = ? LIMIT 1`,
+		body.URL, libs, body.Shelf,
 	).Scan(&existing)
 	if err == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -59,8 +60,8 @@ func (h *ShortenHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = h.db.ExecContext(r.Context(),
-		`INSERT INTO shortlinks (token, url, libraries) VALUES (?, ?, ?)`,
-		token, body.URL, libs,
+		`INSERT INTO shortlinks (token, url, libraries, shelf) VALUES (?, ?, ?, ?)`,
+		token, body.URL, libs, body.Shelf,
 	)
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
@@ -78,11 +79,11 @@ func (h *ShortenHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var url, libraries string
+	var url, libraries, shelf string
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT url, libraries FROM shortlinks WHERE token = ? LIMIT 1`,
+		`SELECT url, libraries, shelf FROM shortlinks WHERE token = ? LIMIT 1`,
 		token,
-	).Scan(&url, &libraries)
+	).Scan(&url, &libraries, &shelf)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -93,6 +94,9 @@ func (h *ShortenHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 		if lib != "" {
 			q += "&libraries=" + encodeURIComponent(lib)
 		}
+	}
+	if shelf != "" {
+		q += "&shelf=" + encodeURIComponent(shelf)
 	}
 	http.Redirect(w, r, "/results.html?"+q, http.StatusFound)
 }

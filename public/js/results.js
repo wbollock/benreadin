@@ -281,6 +281,7 @@
 
   const params = new URLSearchParams(window.location.search);
   const shelfUrl  = params.get('url');
+  const shelf     = params.get('shelf') || '';
   const libraries = params.getAll('libraries');
 
   // ---- Client-side results cache (1-hour TTL) ----
@@ -289,7 +290,7 @@
   const RESULTS_CACHE_TTL = 60 * 60 * 1000;
 
   function buildCacheKey() {
-    return shelfUrl + '|' + [...libraries].sort().join(',');
+    return shelfUrl + '|' + shelf + '|' + [...libraries].sort().join(',');
   }
 
   function getCachedResults() {
@@ -371,6 +372,7 @@
 
   const baseParams = new URLSearchParams();
   baseParams.set('url', shelfUrl);
+  if (shelf) baseParams.set('shelf', shelf);
   libraries.forEach(l => baseParams.append('libraries', l));
 
   if (activeSort !== 'random') sortSelect.value = activeSort;
@@ -683,7 +685,7 @@
       const res = await fetch('/api/shorten', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: shelfUrl, libraries }),
+        body: JSON.stringify({ url: shelfUrl, libraries, shelf }),
       });
       if (!res.ok) return;
       const { link } = await res.json();

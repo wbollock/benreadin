@@ -174,6 +174,12 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// An explicit shelf param (home-page shelf picker) overrides whatever the
+	// URL implied.
+	if shelf := strings.TrimSpace(r.URL.Query().Get("shelf")); shelf != "" {
+		parsed.Shelf = shelf
+	}
+
 	// If libraries were passed in query, use those; otherwise use parsed ones
 	if len(libraries) == 0 {
 		libraries = parsed.Libraries

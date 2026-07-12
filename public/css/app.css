@@ -290,6 +290,16 @@ input[type="url"]:focus {
 }
 input::placeholder { color: var(--text-subtle); }
 
+/* Shelf picker */
+.shelf-row { display: flex; gap: 8px; }
+.shelf-row .filter-select {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  font-size: .9375rem;
+  background: var(--surface-2);
+}
+.shelf-row input[type="text"] { flex: 1 1 auto; }
+
 /* Library chips */
 .library-input-wrap { position: relative; }
 .library-chips {
