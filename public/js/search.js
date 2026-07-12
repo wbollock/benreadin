@@ -25,8 +25,40 @@
     set(key, val) { try { localStorage.setItem(key, val); } catch { /* blocked / quota */ } },
   };
 
-  // ---- Pre-populate libraries from recent usage ----
-  loadRecentLibs().forEach(lib => addLibrary(lib.key, lib.name));
+  // ---- Remember-me cookies (username + last-used libraries) ----
+  // Cookies survive where localStorage is blocked or cleared separately, and
+  // let a returning user skip re-typing their shelf URL and libraries.
+  const COOKIE_MAX_AGE = 180 * 86400; // 180 days
+  const USER_COOKIE = 'benreadin_user';
+  const LIBS_COOKIE = 'benreadin_last_libs';
+
+  function setCookie(name, val) {
+    try {
+      document.cookie = name + '=' + encodeURIComponent(val) +
+        ';max-age=' + COOKIE_MAX_AGE + ';path=/;SameSite=Lax';
+    } catch { /* cookies blocked */ }
+  }
+  function getCookie(name) {
+    try {
+      const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+      return m ? decodeURIComponent(m[1]) : null;
+    } catch { return null; }
+  }
+  function loadLastLibsCookie() {
+    try {
+      const libs = JSON.parse(getCookie(LIBS_COOKIE) || '[]');
+      return Array.isArray(libs) ? libs.filter(l => l && l.key) : [];
+    } catch { return []; }
+  }
+
+  // ---- Pre-populate from remembered usage ----
+  // Last-used libraries from the cookie win; fall back to localStorage history.
+  const rememberedLibs = loadLastLibsCookie();
+  (rememberedLibs.length ? rememberedLibs : loadRecentLibs())
+    .forEach(lib => addLibrary(lib.key, lib.name));
+
+  const rememberedUser = getCookie(USER_COOKIE);
+  if (rememberedUser && !urlInput.value) urlInput.value = rememberedUser;
 
   // ---- Example shelf link ----
   if (exampleBtn) {
@@ -307,6 +339,8 @@
 
     const aliases = loadAliases();
     saveRecentLibs(libraries);
+    setCookie(USER_COOKIE, url);
+    setCookie(LIBS_COOKIE, JSON.stringify(libraries.map(l => ({ key: l.key, name: l.name }))));
     const params = new URLSearchParams();
     params.set('url', url);
     libraries.forEach(l => {

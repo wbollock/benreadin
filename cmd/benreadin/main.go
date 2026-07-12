@@ -79,6 +79,32 @@ func main() {
 
 	recommendationSvc := services.NewRecommendationService(overdriveSvc)
 
+	// Background prewarm: periodically re-run seeded + recently used searches so
+	// the book cache is warm before returning users search again.
+	prewarmCtx, prewarmCancel := context.WithCancel(context.Background())
+	defer prewarmCancel()
+	if cfg.prewarmEnabled {
+		prewarmSvc := services.NewPrewarmService(
+			goodreadsSvc,
+			overdriveSvc,
+			openLibrarySvc,
+			amazonSvc,
+			gutenbergSvc,
+			cache,
+			services.ParsePrewarmSeeds(cfg.prewarmSeeds),
+			time.Duration(cfg.prewarmIntervalSec)*time.Second,
+			time.Duration(cfg.prewarmActiveDays)*24*time.Hour,
+			cfg.bookTTL,
+		)
+		go prewarmSvc.Start(prewarmCtx)
+		slog.Info("prewarm scheduler enabled",
+			"interval_seconds", cfg.prewarmIntervalSec,
+			"active_days", cfg.prewarmActiveDays,
+			"seeds", cfg.prewarmSeeds)
+	} else {
+		slog.Info("prewarm scheduler disabled")
+	}
+
 	searchHandler := handlers.NewSearchHandler(
 		goodreadsSvc,
 		overdriveSvc,
@@ -141,6 +167,7 @@ func main() {
 
 	<-stop
 	slog.Info("shutting down…")
+	prewarmCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -163,6 +190,11 @@ type config struct {
 	amazonSecretKey   string
 	amazonPartnerTag  string
 	amazonMarketplace string
+
+	prewarmEnabled     bool
+	prewarmIntervalSec int64
+	prewarmActiveDays  int64
+	prewarmSeeds       string
 }
 
 func loadConfig() config {
@@ -178,6 +210,13 @@ func loadConfig() config {
 		amazonSecretKey:   os.Getenv("AMAZON_SECRET_KEY"),
 		amazonPartnerTag:  os.Getenv("AMAZON_PARTNER_TAG"),
 		amazonMarketplace: envOrDefault("AMAZON_MARKETPLACE", "www.amazon.com"),
+
+		prewarmEnabled:     envOrDefault("PREWARM_ENABLED", "true") == "true",
+		prewarmIntervalSec: envInt64("PREWARM_INTERVAL_SECONDS", 3600),
+		prewarmActiveDays:  envInt64("PREWARM_ACTIVE_DAYS", 10),
+		// Format: "userID:shelf:lib1,lib2;userID2:shelf:lib3". Default keeps the
+		// site owner's to-read shelf warm at the Free Library of Philadelphia.
+		prewarmSeeds: envOrDefault("PREWARM_SEEDS", "97106512:to-read:freelibrary"),
 	}
 }
 
