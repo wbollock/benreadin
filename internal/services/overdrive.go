@@ -24,7 +24,9 @@ type OverDriveService struct {
 
 func NewOverDriveService(cache *CacheService) *OverDriveService {
 	return &OverDriveService{
-		client: &http.Client{Timeout: 10 * time.Second},
+		// Idle pool sized to CONCURRENCY_OVERDRIVE's default so parallel
+		// availability checks reuse warm connections to the Thunder API.
+		client: newHTTPClient(10*time.Second, 50),
 		cache:  cache,
 	}
 }

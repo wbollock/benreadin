@@ -20,6 +20,13 @@ func TestParseShelfURL(t *testing.T) {
 			wantUserID: "12345678",
 			wantShelf:  "to-read",
 		},
+		// Bare ID with slug suffix (as copied from a profile URL)
+		{
+			name:       "bare ID with slug",
+			input:      "97106512-william",
+			wantUserID: "97106512",
+			wantShelf:  "to-read",
+		},
 		// Goodreads profile URL with slug
 		{
 			name:       "profile URL with slug",

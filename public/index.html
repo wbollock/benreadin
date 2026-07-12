@@ -13,7 +13,8 @@
   <link rel="stylesheet" href="/css/app.css">
   <script>
     (function(){
-      var t = localStorage.getItem('benreadin_theme');
+      var t = null;
+      try { t = localStorage.getItem('benreadin_theme'); } catch (e) { /* storage blocked */ }
       if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         document.documentElement.dataset.theme = 'dark';
       } else if (t === 'light') {
@@ -138,8 +139,26 @@
   <footer class="site-footer">
     <div class="container">
       <p>benreadin is not affiliated with Goodreads, Libby, OverDrive, or Amazon. Borrow data is live from OverDrive. As an Amazon Associate, benreadin may earn from qualifying purchases.</p>
+      <div class="footer-reset">
+        <button type="button" id="reset-data-btn" title="Clear this site's saved data if the page is misbehaving">Reset saved data</button>
+      </div>
     </div>
   </footer>
+
+  <!-- Self-contained recovery hatch: clears this site's storage and reloads,
+       even if the main bundle failed to run. -->
+  <script>
+    (function () {
+      var b = document.getElementById('reset-data-btn');
+      if (!b) return;
+      b.addEventListener('click', function () {
+        if (!confirm('Clear saved settings (library names, recent libraries) and reload?')) return;
+        try { localStorage.clear(); } catch (e) { /* storage blocked */ }
+        try { sessionStorage.clear(); } catch (e) { /* storage blocked */ }
+        location.reload();
+      });
+    })();
+  </script>
 
   <script src="/js/theme.js"></script>
   <script src="/js/search.js"></script>

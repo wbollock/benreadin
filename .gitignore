@@ -18,3 +18,4 @@ data/
 .vscode/
 *.swp
 *.swo
+.claude/worktrees/
