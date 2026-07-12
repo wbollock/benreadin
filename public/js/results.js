@@ -43,7 +43,22 @@
     set(key, val) { try { localStorage.setItem(key, val); } catch { /* blocked / quota */ } },
   };
 
-  let activeSort = storage.get(SORT_KEY) || 'available_first';
+  let activeSort = storage.get(SORT_KEY) || 'rating_desc';
+
+  // Filters default to Available + Kindle; any change the user makes is saved
+  // as their new default (the "All" chip saves an empty set = show everything).
+  const FILTER_KEY = 'benreadin_filters';
+  const VALID_FILTERS = [...AVAILABILITY_FILTERS, 'kindle', 'gutenberg'];
+  (function restoreFilters() {
+    let saved = null;
+    try { saved = JSON.parse(storage.get(FILTER_KEY)); } catch { /* corrupt */ }
+    const wanted = Array.isArray(saved) ? saved : ['available', 'kindle'];
+    wanted.filter(f => VALID_FILTERS.includes(f)).forEach(f => activeFilters.add(f));
+  })();
+
+  function saveFilters() {
+    storage.set(FILTER_KEY, JSON.stringify([...activeFilters]));
+  }
 
   // ---- Utilities ----
 
@@ -142,11 +157,9 @@
         break;
       }
       case 'wait_asc':
-        copy.sort((a, b) => {
-          const wa = bestStatus(a.library_results) === 'available' ? -Infinity : minWait(a.library_results);
-          const wb = bestStatus(b.library_results) === 'available' ? -Infinity : minWait(b.library_results);
-          return wa - wb;
-        });
+        // Books with an actual hold queue lead (shortest wait first) — that's
+        // what this sort is for; available-now titles follow, the rest last.
+        copy.sort((a, b) => waitSortKey(a) - waitSortKey(b));
         break;
       case 'rating_desc':
         copy.sort((a, b) => (b.book.average_rating || 0) - (a.book.average_rating || 0));
@@ -164,6 +177,18 @@
         break;
     }
     return copy;
+  }
+
+  // Sort key for "Shortest wait": known waits ascending, then holds with an
+  // unknown wait, then available-now, then unavailable/not-found.
+  function waitSortKey(event) {
+    const status = bestStatus(event.library_results);
+    if (status === 'wait') {
+      const w = minWait(event.library_results);
+      return Number.isFinite(w) ? w : 1e9;
+    }
+    if (status === 'available') return 1e10;
+    return 1e11;
   }
 
   function randomKey(event) {
@@ -247,6 +272,7 @@
           activeFilters.add(btn.dataset.filter);
         }
       }
+      saveFilters();
       syncFilterUI();
       applyView();
     });
@@ -269,8 +295,9 @@
 
   if (shuffleBtn) {
     shuffleBtn.addEventListener('click', () => {
+      // Session-only: shuffle is a one-off action, not a default. Persisting
+      // "random" used to leave the sort dropdown blank on the next visit.
       activeSort = 'random';
-      storage.set(SORT_KEY, activeSort);
       randomKeys.clear();
       syncSortUI();
       applyView();
@@ -375,7 +402,12 @@
   if (shelf) baseParams.set('shelf', shelf);
   libraries.forEach(l => baseParams.append('libraries', l));
 
-  if (activeSort !== 'random') sortSelect.value = activeSort;
+  // A stored value the select doesn't offer (e.g. "random" persisted by an
+  // older shuffle) would leave the dropdown blank — fall back to the default.
+  if (![...sortSelect.options].some(o => o.value === activeSort)) {
+    activeSort = 'rating_desc';
+  }
+  sortSelect.value = activeSort;
   syncFilterUI();
   syncSortUI();
 
