@@ -25,6 +25,32 @@
     set(key, val) { try { localStorage.setItem(key, val); } catch { /* blocked / quota */ } },
   };
 
+  // ---- Remember-me cookies (username + last-used libraries) ----
+  // Cookies survive where localStorage is blocked or cleared separately, and
+  // let a returning user skip re-typing their shelf URL and libraries.
+  const COOKIE_MAX_AGE = 180 * 86400; // 180 days
+  const USER_COOKIE = 'benreadin_user';
+  const LIBS_COOKIE = 'benreadin_last_libs';
+
+  function setCookie(name, val) {
+    try {
+      document.cookie = name + '=' + encodeURIComponent(val) +
+        ';max-age=' + COOKIE_MAX_AGE + ';path=/;SameSite=Lax';
+    } catch { /* cookies blocked */ }
+  }
+  function getCookie(name) {
+    try {
+      const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+      return m ? decodeURIComponent(m[1]) : null;
+    } catch { return null; }
+  }
+  function loadLastLibsCookie() {
+    try {
+      const libs = JSON.parse(getCookie(LIBS_COOKIE) || '[]');
+      return Array.isArray(libs) ? libs.filter(l => l && l.key) : [];
+    } catch { return []; }
+  }
+
   // ---- Example shelf link ----
   if (exampleBtn) {
     exampleBtn.addEventListener('click', e => {
@@ -317,6 +343,8 @@
     const aliases = loadAliases();
     saveRecentLibs(libraries);
     saveLastSearch(url, libraries);
+    setCookie(USER_COOKIE, url);
+    setCookie(LIBS_COOKIE, JSON.stringify(libraries.map(l => ({ key: l.key, name: l.name }))));
     const params = new URLSearchParams();
     params.set('url', url);
     libraries.forEach(l => {
@@ -329,15 +357,20 @@
   });
 
   // ---- Restore last search (shelf URL + exact library set) ----
-  // Fall back to merged recents for users whose storage predates last-search
-  // tracking. Must run after all const declarations above: the storage-key
-  // consts are in their temporal dead zone until then, and the loaders'
-  // try/catch would silently swallow the ReferenceError and restore nothing.
+  // Precedence: localStorage last-search, then remember-me cookies (which
+  // survive when localStorage is blocked or cleared), then merged recents.
+  // Must run after all const declarations above: the storage-key consts are
+  // in their temporal dead zone until then, and the loaders' try/catch would
+  // silently swallow the ReferenceError and restore nothing.
   const lastSearch = loadLastSearch();
+  const rememberedUser = getCookie(USER_COOKIE);
   if (lastSearch && lastSearch.url) urlInput.value = lastSearch.url;
+  else if (rememberedUser) urlInput.value = rememberedUser;
+
+  const cookieLibs = loadLastLibsCookie();
   const restoredLibs = (lastSearch && Array.isArray(lastSearch.libs) && lastSearch.libs.length)
     ? lastSearch.libs
-    : loadRecentLibs();
+    : (cookieLibs.length ? cookieLibs : loadRecentLibs());
   restoredLibs.forEach(lib => addLibrary(lib.key, lib.name, { focus: false }));
 
   // ---- Utils ----

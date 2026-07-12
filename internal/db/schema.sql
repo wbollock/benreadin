@@ -74,3 +74,16 @@ CREATE TABLE IF NOT EXISTS shortlinks (
   libraries  TEXT NOT NULL,  -- comma-separated library keys
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+-- Recent searches: shelf + library sets to keep pre-warmed by the background
+-- prewarm scheduler. One row per unique (user, shelf, library set); touched on
+-- every successful search.
+CREATE TABLE IF NOT EXISTS recent_searches (
+  id                INTEGER PRIMARY KEY,
+  goodreads_user_id TEXT NOT NULL,
+  shelf             TEXT NOT NULL,
+  libraries         TEXT NOT NULL,  -- sorted comma-separated library keys
+  last_used_at      INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_recent_searches
+  ON recent_searches(goodreads_user_id, shelf, libraries);

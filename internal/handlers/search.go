@@ -37,13 +37,9 @@ type SearchRequest struct {
 	Libraries []string `json:"libraries"`
 }
 
-// BookEvent is a single SSE payload sent to the client.
-type BookEvent struct {
-	Book            models.Book             `json:"book"`
-	LibraryResults  []models.LibraryResult  `json:"library_results"`
-	AmazonResult    models.AmazonResult     `json:"amazon_result"`
-	GutenbergResult *models.GutenbergResult `json:"gutenberg_result,omitempty"`
-}
+// BookEvent is a single SSE payload sent to the client. It lives in models so
+// the prewarm scheduler writes the identical shape to the book cache.
+type BookEvent = models.BookEvent
 
 // BookStubsEvent is sent as a single batch immediately after the Goodreads
 // shelf is fetched, so the client can render the full list of placeholder cards
@@ -188,6 +184,12 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		sendEvent("error", map[string]string{"message": fmt.Sprintf("Failed to fetch Goodreads shelf: %s", err)})
 		return
+	}
+
+	// Remember this search so the prewarm scheduler keeps its results warm for
+	// returning users.
+	if err := h.cache.RecordSearch(parsed.UserID, parsed.Shelf, librariesCacheKey(libraries)); err != nil {
+		slog.Warn("record recent search failed", "err", err)
 	}
 
 	if len(books) == 0 {
