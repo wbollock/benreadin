@@ -1229,6 +1229,20 @@ input::placeholder { color: var(--text-subtle); }
   font-size: .775rem;
   background: var(--surface);
 }
+.footer-reset {
+  margin-top: 10px;
+}
+.footer-reset button {
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  color: var(--text-subtle);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.footer-reset button:hover { color: var(--text); }
 
 /* ================================================================
    SKELETON

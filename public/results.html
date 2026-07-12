@@ -11,7 +11,8 @@
   <link rel="stylesheet" href="/css/app.css">
   <script>
     (function(){
-      var t = localStorage.getItem('benreadin_theme');
+      var t = null;
+      try { t = localStorage.getItem('benreadin_theme'); } catch (e) { /* storage blocked */ }
       if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         document.documentElement.dataset.theme = 'dark';
       } else if (t === 'light') {
@@ -115,7 +116,9 @@
               <option value="default">Shelf order</option>
               <option value="title_asc">Title A→Z</option>
               <option value="title_desc">Title Z→A</option>
+              <option value="random">Shuffle</option>
             </select>
+            <button class="filter-select" id="shuffle-btn" type="button" title="Pick a new random order" style="display:none;margin-left:6px">Reshuffle</button>
           </div>
         </div>
       </div>
@@ -142,8 +145,26 @@
   <footer class="site-footer">
     <div class="container">
       <p>benreadin is not affiliated with Goodreads, Libby, OverDrive, or Amazon. Borrow data is live from OverDrive. As an Amazon Associate, benreadin may earn from qualifying purchases.</p>
+      <div class="footer-reset">
+        <button type="button" id="reset-data-btn" title="Clear this site's saved data if the page is misbehaving">Reset saved data</button>
+      </div>
     </div>
   </footer>
+
+  <!-- Self-contained recovery hatch: clears this site's storage and reloads,
+       even if the main bundle failed to run. -->
+  <script>
+    (function () {
+      var b = document.getElementById('reset-data-btn');
+      if (!b) return;
+      b.addEventListener('click', function () {
+        if (!confirm('Clear saved settings (library names, sort, cached results) and reload?')) return;
+        try { localStorage.clear(); } catch (e) { /* storage blocked */ }
+        try { sessionStorage.clear(); } catch (e) { /* storage blocked */ }
+        location.reload();
+      });
+    })();
+  </script>
 
   <!-- Library rename modal -->
   <div id="rename-modal" class="rename-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="rename-modal-title">

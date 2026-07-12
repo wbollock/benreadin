@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"sort"
 	"strings"
@@ -15,6 +16,20 @@ import (
 	"github.com/wbollock/benreadin/internal/services"
 	"golang.org/x/sync/semaphore"
 )
+
+// ssePadding is a high-entropy comment payload sent on connect so the stream
+// crosses Firefox's ~1KB threshold for dispatching the first EventSource events,
+// even if an intermediary recompresses the response. Built once at startup;
+// printable ASCII only, so it never contains a newline that would end the SSE
+// comment early.
+var ssePadding = func() string {
+	const n = 2048
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = byte('!' + rand.Intn('~'-'!'+1)) // '!'..'~', no '\n'
+	}
+	return string(b)
+}()
 
 // SearchRequest is the JSON body for POST /api/search.
 type SearchRequest struct {
@@ -123,13 +138,19 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		sseMu.Unlock()
 	}
 
-	// Some mobile browsers (notably iOS Safari) and carrier proxies won't surface
-	// the response to EventSource until a minimum number of bytes has arrived. The
-	// first real event is tiny and FetchShelf then blocks for seconds, so without
-	// this the client freezes on "Starting…". A 2KB comment shoves past that
-	// threshold and forces an immediate flush.
+	// Some browsers won't surface the response to EventSource until a minimum
+	// number of bytes has arrived — Firefox needs ~1KB before it dispatches the
+	// first events (Chrome has no such threshold), so the first tiny event plus a
+	// slow FetchShelf leaves the client frozen on "Starting…". A 2KB comment shoves
+	// past that threshold and forces an immediate flush.
+	//
+	// The padding MUST be high-entropy: a run of identical spaces compresses to a
+	// few bytes, and an intermediary that recompresses the stream despite
+	// no-transform (a carrier proxy or upstream CDN) would shrink it back below the
+	// threshold — which surfaces on mobile Firefox while mobile Chrome, lacking the
+	// threshold, still works. Random bytes stay ~2KB through any recompression.
 	sseMu.Lock()
-	fmt.Fprintf(w, ":%s\n\n", strings.Repeat(" ", 2048))
+	fmt.Fprintf(w, ":%s\n\n", ssePadding)
 	flusher.Flush()
 	sseMu.Unlock()
 

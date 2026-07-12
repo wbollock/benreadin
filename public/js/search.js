@@ -16,6 +16,15 @@
   let acIndex = -1;
   let debounceTimer = null;
 
+  // localStorage access throws (not just returns null) when site data is blocked
+  // — e.g. Firefox with Strict Enhanced Tracking Protection. An unguarded write
+  // on submit would abort before navigating to results, so route every access
+  // through here and degrade gracefully.
+  const storage = {
+    get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+    set(key, val) { try { localStorage.setItem(key, val); } catch { /* blocked / quota */ } },
+  };
+
   // ---- Pre-populate libraries from recent usage ----
   loadRecentLibs().forEach(lib => addLibrary(lib.key, lib.name));
 
@@ -31,12 +40,12 @@
 
   // ---- Aliases (localStorage) ----
   function loadAliases() {
-    try { return JSON.parse(localStorage.getItem('benreadin_lib_aliases') || '{}'); } catch { return {}; }
+    try { return JSON.parse(storage.get('benreadin_lib_aliases') || '{}'); } catch { return {}; }
   }
   function saveAlias(key, alias) {
     const aliases = loadAliases();
     if (alias) aliases[key] = alias; else delete aliases[key];
-    localStorage.setItem('benreadin_lib_aliases', JSON.stringify(aliases));
+    storage.set('benreadin_lib_aliases', JSON.stringify(aliases));
   }
   function displayName(key, name) {
     const aliases = loadAliases();
@@ -48,7 +57,7 @@
   const MAX_RECENT = 10;
 
   function loadRecentLibs() {
-    try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; }
+    try { return JSON.parse(storage.get(RECENT_KEY) || '[]'); } catch { return []; }
   }
 
   function saveRecentLibs(libs) {
@@ -59,7 +68,7 @@
       if (idx !== -1) recent.splice(idx, 1);
       recent.unshift({ key: lib.key, name: lib.name });
     }
-    localStorage.setItem(RECENT_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)));
+    storage.set(RECENT_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)));
   }
 
   async function showEmptySuggestions() {

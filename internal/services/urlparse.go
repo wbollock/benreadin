@@ -23,9 +23,10 @@ type ParsedShelfURL struct {
 func ParseShelfURL(raw string) (*ParsedShelfURL, error) {
 	raw = strings.TrimSpace(raw)
 
-	// Bare numeric user ID — treat as Goodreads user ID, default to to-read shelf.
-	if isNumericID(raw) {
-		return &ParsedShelfURL{UserID: raw, Shelf: "to-read"}, nil
+	// Bare Goodreads user ID, optionally with a "-slug" suffix as it appears in
+	// profile URLs (e.g. "97106512" or "97106512-william"). Default to to-read.
+	if id := bareGoodreadsID(raw); id != "" {
+		return &ParsedShelfURL{UserID: id, Shelf: "to-read"}, nil
 	}
 
 	u, err := url.Parse(raw)
@@ -41,6 +42,24 @@ func ParseShelfURL(raw string) (*ParsedShelfURL, error) {
 	default:
 		return nil, fmt.Errorf("unsupported URL host %q — paste a Goodreads shelf/profile URL or OverReader URL", u.Host)
 	}
+}
+
+// bareGoodreadsID extracts the numeric user ID from a bare (non-URL) input that
+// is either all digits ("97106512") or the digits-plus-slug form found in
+// profile URLs ("97106512-william"). It returns "" when raw contains path or
+// host separators, so genuine URLs fall through to url.Parse.
+func bareGoodreadsID(raw string) string {
+	if strings.ContainsAny(raw, "/:. ") {
+		return ""
+	}
+	id := raw
+	if i := strings.IndexByte(raw, '-'); i >= 0 {
+		id = raw[:i]
+	}
+	if isNumericID(id) {
+		return id
+	}
+	return ""
 }
 
 // isNumericID returns true if s is a non-empty string of digits only.

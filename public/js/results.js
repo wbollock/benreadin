@@ -9,6 +9,7 @@
   const resultsCount   = document.getElementById('results-count');
   const filterBtns     = document.querySelectorAll('#filter-availability .filter-chip');
   const sortSelect     = document.getElementById('sort-select');
+  const shuffleBtn     = document.getElementById('shuffle-btn');
   const recsPanel      = document.getElementById('recs-panel');
   const recsGrid       = document.getElementById('recs-grid');
   const recsToggle     = document.getElementById('recs-toggle');
@@ -26,7 +27,23 @@
   // Availability chips are mutually-exclusive states; the rest narrow the result.
   const AVAILABILITY_FILTERS = ['available', 'wait', 'not_found'];
   const SORT_KEY = 'benreadin_sort';
-  let activeSort = localStorage.getItem(SORT_KEY) || 'available_first';
+  // Stable per-book random keys for the "random" sort. Assigned lazily and kept
+  // for the life of the page so streaming in new books (SSE) doesn't reshuffle
+  // books already on screen — only re-rolled on an explicit shuffle.
+  const randomKeys = new Map();
+
+  // localStorage access throws (not just returns null) when site data is
+  // blocked — e.g. Firefox with Strict Enhanced Tracking Protection, which is
+  // common on mobile Firefox. An unguarded read at script-init aborts this whole
+  // IIFE, so the page never opens the EventSource and is stranded on the static
+  // "Starting…". Route every access through here so storage failures degrade
+  // gracefully instead of breaking the page.
+  const storage = {
+    get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+    set(key, val) { try { localStorage.setItem(key, val); } catch { /* blocked / quota */ } },
+  };
+
+  let activeSort = storage.get(SORT_KEY) || 'available_first';
 
   // ---- Utilities ----
 
@@ -140,10 +157,24 @@
       case 'title_desc':
         copy.sort((a, b) => b.book.title.localeCompare(a.book.title));
         break;
+      case 'random':
+        copy.sort((a, b) => randomKey(a) - randomKey(b));
+        break;
       default: // shelf order
         break;
     }
     return copy;
+  }
+
+  function randomKey(event) {
+    const id = event.book && event.book.goodreads_id;
+    if (!id) return Math.random();
+    let key = randomKeys.get(id);
+    if (key === undefined) {
+      key = Math.random();
+      randomKeys.set(id, key);
+    }
+    return key;
   }
 
   // ---- DOM helpers ----
@@ -221,11 +252,24 @@
     });
   });
 
+  function syncSortUI() {
+    if (shuffleBtn) shuffleBtn.style.display = activeSort === 'random' ? '' : 'none';
+  }
+
   sortSelect.addEventListener('change', () => {
     activeSort = sortSelect.value;
-    localStorage.setItem(SORT_KEY, activeSort);
+    storage.set(SORT_KEY, activeSort);
+    if (activeSort === 'random') randomKeys.clear();
+    syncSortUI();
     applyView();
   });
+
+  if (shuffleBtn) {
+    shuffleBtn.addEventListener('click', () => {
+      randomKeys.clear();
+      applyView();
+    });
+  }
 
   // ---- SSE ----
 
@@ -244,7 +288,7 @@
 
   function getCachedResults() {
     try {
-      const all = JSON.parse(localStorage.getItem(RESULTS_CACHE_STORAGE_KEY) || '{}');
+      const all = JSON.parse(storage.get(RESULTS_CACHE_STORAGE_KEY) || '{}');
       const entry = all[buildCacheKey()];
       if (!entry || Date.now() - entry.timestamp > RESULTS_CACHE_TTL) return null;
       return entry;
@@ -253,22 +297,22 @@
 
   function saveResultsToCache(books) {
     try {
-      const all = JSON.parse(localStorage.getItem(RESULTS_CACHE_STORAGE_KEY) || '{}');
+      const all = JSON.parse(storage.get(RESULTS_CACHE_STORAGE_KEY) || '{}');
       all[buildCacheKey()] = { books, timestamp: Date.now() };
       const keys = Object.keys(all);
       if (keys.length > 15) {
         keys.sort((a, b) => all[a].timestamp - all[b].timestamp);
         delete all[keys[0]];
       }
-      localStorage.setItem(RESULTS_CACHE_STORAGE_KEY, JSON.stringify(all));
+      storage.set(RESULTS_CACHE_STORAGE_KEY, JSON.stringify(all));
     } catch { /* quota exceeded */ }
   }
 
   function clearCachedResults() {
     try {
-      const all = JSON.parse(localStorage.getItem(RESULTS_CACHE_STORAGE_KEY) || '{}');
+      const all = JSON.parse(storage.get(RESULTS_CACHE_STORAGE_KEY) || '{}');
       delete all[buildCacheKey()];
-      localStorage.setItem(RESULTS_CACHE_STORAGE_KEY, JSON.stringify(all));
+      storage.set(RESULTS_CACHE_STORAGE_KEY, JSON.stringify(all));
     } catch {}
   }
 
@@ -302,12 +346,12 @@
   });
 
   function loadAliases() {
-    try { return JSON.parse(localStorage.getItem('benreadin_lib_aliases') || '{}'); } catch { return {}; }
+    try { return JSON.parse(storage.get('benreadin_lib_aliases') || '{}'); } catch { return {}; }
   }
   function saveAlias(key, alias) {
     const aliases = loadAliases();
     if (alias) aliases[key] = alias; else delete aliases[key];
-    localStorage.setItem('benreadin_lib_aliases', JSON.stringify(aliases));
+    storage.set('benreadin_lib_aliases', JSON.stringify(aliases));
   }
   window.getLibName = key => {
     const aliases = loadAliases();
@@ -325,6 +369,7 @@
 
   sortSelect.value = activeSort;
   syncFilterUI();
+  syncSortUI();
 
   let activeES = null;
   let streamDone = false;

@@ -9,7 +9,9 @@
 
   function applyTheme(dark) {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+    // Storage can be blocked (e.g. Firefox Strict tracking protection) — let the
+    // theme still apply for this session instead of throwing on click.
+    try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); } catch { /* storage blocked */ }
     syncIcon(dark);
   }
 
