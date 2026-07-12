@@ -25,9 +25,6 @@
     set(key, val) { try { localStorage.setItem(key, val); } catch { /* blocked / quota */ } },
   };
 
-  // ---- Pre-populate libraries from recent usage ----
-  loadRecentLibs().forEach(lib => addLibrary(lib.key, lib.name));
-
   // ---- Example shelf link ----
   if (exampleBtn) {
     exampleBtn.addEventListener('click', e => {
@@ -50,6 +47,20 @@
   function displayName(key, name) {
     const aliases = loadAliases();
     return aliases[key] || name || key;
+  }
+
+  // ---- Last search (localStorage) ----
+  const LAST_SEARCH_KEY = 'benreadin_last_search';
+
+  function loadLastSearch() {
+    try { return JSON.parse(storage.get(LAST_SEARCH_KEY) || 'null'); } catch { return null; }
+  }
+
+  function saveLastSearch(url, libs) {
+    storage.set(LAST_SEARCH_KEY, JSON.stringify({
+      url,
+      libs: libs.map(l => ({ key: l.key, name: l.name })),
+    }));
   }
 
   // ---- Recently used libraries (localStorage) ----
@@ -93,13 +104,13 @@
 
   // ---- Library chip management ----
 
-  function addLibrary(key, name) {
+  function addLibrary(key, name, { focus = true } = {}) {
     if (libraries.length >= 15) return;
     if (libraries.find(l => l.key === key)) return;
     libraries.push({ key, name: name || key });
     renderChips();
     chipInput.value = '';
-    chipInput.focus();
+    if (focus) chipInput.focus();
     closeDropdown();
     syncHidden();
   }
@@ -272,8 +283,6 @@
     acIndex = -1;
   }
 
-  // No default library — start with an empty form so users pick their own.
-
   // ---- URL paste detection: auto-fill libraries from OverReader URL ----
 
   urlInput.addEventListener('paste', e => {
@@ -307,6 +316,7 @@
 
     const aliases = loadAliases();
     saveRecentLibs(libraries);
+    saveLastSearch(url, libraries);
     const params = new URLSearchParams();
     params.set('url', url);
     libraries.forEach(l => {
@@ -317,6 +327,18 @@
 
     window.location.href = '/results.html?' + params.toString();
   });
+
+  // ---- Restore last search (shelf URL + exact library set) ----
+  // Fall back to merged recents for users whose storage predates last-search
+  // tracking. Must run after all const declarations above: the storage-key
+  // consts are in their temporal dead zone until then, and the loaders'
+  // try/catch would silently swallow the ReferenceError and restore nothing.
+  const lastSearch = loadLastSearch();
+  if (lastSearch && lastSearch.url) urlInput.value = lastSearch.url;
+  const restoredLibs = (lastSearch && Array.isArray(lastSearch.libs) && lastSearch.libs.length)
+    ? lastSearch.libs
+    : loadRecentLibs();
+  restoredLibs.forEach(lib => addLibrary(lib.key, lib.name, { focus: false }));
 
   // ---- Utils ----
 
