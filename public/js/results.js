@@ -252,21 +252,27 @@
     });
   });
 
+  // Shuffle is a standalone toggle next to the Sort dropdown, not a dropdown
+  // option: while active the button is highlighted and the select shows no
+  // selection; picking any sort exits shuffle mode.
   function syncSortUI() {
-    if (shuffleBtn) shuffleBtn.style.display = activeSort === 'random' ? '' : 'none';
+    if (shuffleBtn) shuffleBtn.classList.toggle('active', activeSort === 'random');
+    if (activeSort === 'random') sortSelect.selectedIndex = -1;
   }
 
   sortSelect.addEventListener('change', () => {
     activeSort = sortSelect.value;
     storage.set(SORT_KEY, activeSort);
-    if (activeSort === 'random') randomKeys.clear();
     syncSortUI();
     applyView();
   });
 
   if (shuffleBtn) {
     shuffleBtn.addEventListener('click', () => {
+      activeSort = 'random';
+      storage.set(SORT_KEY, activeSort);
       randomKeys.clear();
+      syncSortUI();
       applyView();
     });
   }
@@ -367,7 +373,7 @@
   baseParams.set('url', shelfUrl);
   libraries.forEach(l => baseParams.append('libraries', l));
 
-  sortSelect.value = activeSort;
+  if (activeSort !== 'random') sortSelect.value = activeSort;
   syncFilterUI();
   syncSortUI();
 
