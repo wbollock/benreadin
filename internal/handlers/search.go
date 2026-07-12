@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -187,7 +188,12 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	// Fetch books from Goodreads
 	books, err := h.goodreads.FetchShelf(ctx, parsed.UserID, parsed.Shelf, r.URL.Query().Get("refresh") == "true")
 	if err != nil {
-		sendEvent("error", map[string]string{"message": fmt.Sprintf("Failed to fetch Goodreads shelf: %s", err)})
+		msg := fmt.Sprintf("Failed to fetch Goodreads shelf: %s", err)
+		var statusErr *services.GoodreadsStatusError
+		if errors.As(err, &statusErr) {
+			msg = statusErr.Error() // already worded for the end user
+		}
+		sendEvent("error", map[string]string{"message": msg})
 		return
 	}
 
@@ -198,7 +204,10 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(books) == 0 {
-		sendEvent("done", map[string]interface{}{"total": 0, "message": "No books found on shelf"})
+		sendEvent("done", map[string]interface{}{
+			"total":   0,
+			"message": "No books found — the shelf may be empty, or the Goodreads profile may be private (Settings → Privacy).",
+		})
 		return
 	}
 

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -25,6 +26,27 @@ var (
 )
 
 const goodreadsRSSBase = "https://www.goodreads.com/review/list_rss/%s"
+
+// GoodreadsStatusError is a non-200 response from the Goodreads RSS feed. Its
+// message is written for the end user — the search UI shows it verbatim.
+type GoodreadsStatusError struct {
+	Code int
+}
+
+func (e *GoodreadsStatusError) Error() string {
+	switch {
+	case e.Code == http.StatusNotFound:
+		return "Goodreads couldn't find that user or shelf. Double-check the ID or URL — and if it's yours, make sure the profile is public (Goodreads → Account Settings → Privacy → \"anyone\" can view my profile)."
+	case e.Code == http.StatusUnauthorized || e.Code == http.StatusForbidden:
+		return "That Goodreads profile looks private. Make it public under Goodreads → Account Settings → Privacy, then try again."
+	case e.Code == http.StatusTooManyRequests:
+		return "Goodreads is rate-limiting requests right now — wait a minute and try again."
+	case e.Code >= 500:
+		return "Goodreads is having trouble right now — try again in a few minutes."
+	default:
+		return fmt.Sprintf("Goodreads returned an unexpected error (HTTP %d).", e.Code)
+	}
+}
 
 // GoodreadsService fetches and parses a Goodreads shelf RSS feed.
 type GoodreadsService struct {
@@ -105,6 +127,10 @@ func (s *GoodreadsService) fetchShelfPages(ctx context.Context, userID, shelf st
 	// Fetch page 1 first to determine pagination needs.
 	page1, err := s.fetchPage(ctx, buildFeedURL(userID, shelf, 1))
 	if err != nil {
+		var statusErr *GoodreadsStatusError
+		if errors.As(err, &statusErr) {
+			return nil, statusErr // already worded for the end user
+		}
 		return nil, fmt.Errorf("fetch goodreads page 1: %w", err)
 	}
 	if len(page1) == 0 {
@@ -201,7 +227,7 @@ func (s *GoodreadsService) fetchPage(ctx context.Context, feedURL string) ([]grI
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("goodreads returned %d", resp.StatusCode)
+		return nil, &GoodreadsStatusError{Code: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)
