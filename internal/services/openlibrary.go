@@ -151,6 +151,59 @@ func (s *OpenLibraryService) lookupByISBN(ctx context.Context, b *models.Book, i
 	return nil
 }
 
+type olRatingResponse struct {
+	Docs []struct {
+		RatingsAverage float64 `json:"ratings_average"`
+		RatingsCount   int     `json:"ratings_count"`
+	} `json:"docs"`
+}
+
+// FetchRating best-effort backfills a community rating from Open Library's
+// own reader ratings. Used only for recommendations — books with no
+// Goodreads rating of their own since they aren't on the user's shelf. Never
+// overwrites an existing rating (e.g. a real Goodreads average), and the
+// pool of Open Library ratings is much smaller than Goodreads', so the
+// result is tagged with RatingSource for honest labeling in the UI.
+func (s *OpenLibraryService) FetchRating(ctx context.Context, b *models.Book) {
+	if b.AverageRating > 0 || b.Title == "" {
+		return
+	}
+	if err := s.sem.Acquire(ctx, 1); err != nil {
+		return
+	}
+	defer s.sem.Release(1)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, openLibrarySearch, nil)
+	if err != nil {
+		return
+	}
+	q := req.URL.Query()
+	q.Set("title", b.SearchTitle())
+	q.Set("author", b.Author)
+	q.Set("limit", "1")
+	q.Set("fields", "ratings_average,ratings_count")
+	req.URL.RawQuery = q.Encode()
+	req.Header.Set("User-Agent", "benreadin/1.0 (+https://github.com/wbollock/benreadin)")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		slog.Debug("open library rating fetch failed", "title", b.Title, "err", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var out olRatingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return
+	}
+	if len(out.Docs) == 0 || out.Docs[0].RatingsAverage <= 0 {
+		return
+	}
+	b.AverageRating = out.Docs[0].RatingsAverage
+	b.RatingsCount = out.Docs[0].RatingsCount
+	b.RatingSource = "openlibrary"
+}
+
 func (s *OpenLibraryService) lookupBySearch(ctx context.Context, b *models.Book) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, openLibrarySearch, nil)
 	if err != nil {
@@ -158,7 +211,7 @@ func (s *OpenLibraryService) lookupBySearch(ctx context.Context, b *models.Book)
 	}
 
 	q := req.URL.Query()
-	q.Set("title", b.Title)
+	q.Set("title", b.SearchTitle())
 	q.Set("author", b.Author)
 	q.Set("limit", "1")
 	q.Set("fields", "isbn,number_of_pages_median")

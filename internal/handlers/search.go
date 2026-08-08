@@ -351,7 +351,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 			}
 			libWg.Wait()
 
-			gbResult := h.gutenberg.Lookup(book.Title, book.Author)
+			gbResult := h.gutenberg.Lookup(book.SearchTitle(), book.Author)
 
 			resultCh <- result{
 				book:            book,

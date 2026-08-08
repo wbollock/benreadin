@@ -79,7 +79,7 @@
         <div class="results-header">
           <h2>Results <span class="results-count" id="results-count"></span></h2>
           <div id="recs-trigger" style="display:none;">
-            <button id="recs-btn" class="btn-recs">Suggest similar</button>
+            <button id="recs-btn" class="btn-recs">Recommend me more books ↓</button>
           </div>
         </div>
 
@@ -128,14 +128,14 @@
       <!-- Recommendations panel -->
       <div id="recs-panel" class="recs-panel" style="display:none;">
         <div class="recs-header">
-          <h2 class="recs-title">More from your libraries</h2>
-          <p class="recs-subtitle">Available now in the libraries you picked, drawn from subjects on your shelf.</p>
+          <h2 class="recs-title">Borrow this next</h2>
           <button class="recs-toggle" id="recs-toggle" aria-expanded="true">Hide</button>
         </div>
+        <p class="recs-subtitle">Available now with Kindle delivery — next books in series you're reading, and more from authors you've finished.</p>
         <div id="recs-loading" class="recs-loading" style="display:none;">
-          <span class="recs-spinner"></span> Finding similar titles…
+          <span class="recs-spinner"></span> <span id="recs-loading-label">Finding books for you…</span>
         </div>
-        <div class="recs-grid" id="recs-grid"></div>
+        <div class="recs-grid book-grid" id="recs-grid"></div>
       </div>
 
     </div>

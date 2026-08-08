@@ -821,6 +821,14 @@ input::placeholder { color: var(--text-subtle); }
   letter-spacing: 1px;
   white-space: nowrap;
 }
+/* Marks a rating sourced from Open Library rather than Goodreads — a much
+   smaller ratings pool, so it's labeled rather than presented as GR data. */
+.rating-source-tag {
+  font-size: .65rem;
+  font-weight: 700;
+  opacity: .7;
+  letter-spacing: .2px;
+}
 
 /* Description details */
 .book-description-details { margin-top: 2px; }
@@ -1141,23 +1149,29 @@ input::placeholder { color: var(--text-subtle); }
   margin-top: 48px;
   padding-top: 32px;
   border-top: 1px solid var(--border);
+  scroll-margin-top: 20px;
+  transition: box-shadow var(--transition);
+}
+/* Brief highlight so the user can see where the page jumped to. */
+.recs-panel--highlight {
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  border-radius: var(--radius-sm);
 }
 .recs-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 20px;
 }
 .recs-title {
   font-family: var(--font-display);
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--text);
-  flex: 1 1 auto;
   letter-spacing: -.1px;
 }
-.recs-subtitle { font-size: .8rem; color: var(--text-muted); flex-basis: 100%; margin-top: -5px; }
+.recs-subtitle { font-size: .8rem; color: var(--text-muted); margin: 4px 0 20px; }
 .recs-toggle {
   padding: 4px 12px;
   border: 1px solid var(--border);
@@ -1173,44 +1187,9 @@ input::placeholder { color: var(--text-subtle); }
 }
 .recs-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
-.recs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-}
-.rec-card {
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
-  padding: 12px;
-  display: flex;
-  gap: 10px;
-  transition: box-shadow var(--transition), transform var(--transition);
-}
-.rec-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
-.rec-cover { flex-shrink: 0; width: 54px; }
-.rec-cover img {
-  width: 54px; height: 81px;
-  object-fit: cover;
-  border-radius: var(--radius-sm);
-  box-shadow: 0 1px 6px rgba(0,0,0,.12);
-  background: var(--border-soft);
-}
-.rec-cover-placeholder {
-  width: 54px; height: 81px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-.rec-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.rec-title {
-  font-size: .84rem; font-weight: 700; line-height: 1.3; color: var(--text);
-  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-}
-.rec-author  { font-size: .75rem; color: var(--text-muted); }
-.rec-because { font-size: .72rem; color: var(--text-subtle); font-style: italic; }
-.rec-badges  { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+/* Rec cards render as ordinary .book-card elements (see .book-grid); this
+   provenance line is inserted into the card between author and page count. */
+.rec-because { font-size: .72rem; color: var(--text-subtle); font-style: italic; margin-top: 2px; }
 
 /* ================================================================
    ERROR BANNER
@@ -1293,7 +1272,6 @@ input::placeholder { color: var(--text-subtle); }
   .book-cover { width: 64px; }
   .book-cover img { width: 64px; height: 96px; }
   .book-cover-placeholder { width: 64px; height: 96px; }
-  .recs-grid { grid-template-columns: 1fr; }
   .filter-bar { gap: 9px; flex-direction: column; align-items: flex-start; }
   .filter-group { width: 100%; align-items: flex-start; }
   /* Wrap chips onto multiple rows instead of a cramped horizontal scroll —

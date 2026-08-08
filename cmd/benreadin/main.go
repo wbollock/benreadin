@@ -38,7 +38,7 @@ func main() {
 		Level: slog.LevelInfo,
 	})))
 
-	database, err := db.Open(cfg.dbPath, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL, cfg.shelfTTL)
+	database, err := db.Open(cfg.dbPath, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL, cfg.shelfTTL, cfg.recProfileTTL)
 	if err != nil {
 		slog.Error("failed to open database", "err", err)
 		os.Exit(1)
@@ -52,7 +52,7 @@ func main() {
 		return
 	}
 
-	cache := services.NewCacheService(database, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL, cfg.shelfTTL)
+	cache := services.NewCacheService(database, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL, cfg.shelfTTL, cfg.recProfileTTL)
 
 	goodreadsSvc := services.NewGoodreadsService(cache)
 	overdriveSvc := services.NewOverDriveService(cache)
@@ -78,7 +78,7 @@ func main() {
 		slog.Info("amazon PA-API disabled (no credentials)")
 	}
 
-	recommendationSvc := services.NewRecommendationService(overdriveSvc)
+	recommendationSvc := services.NewRecommendationService(goodreadsSvc, overdriveSvc, openLibrarySvc, gutenbergSvc, amazonSvc, cache, cfg.recMax, cfg.recMaxAuthors, cfg.odConcurrency)
 
 	// Background prewarm: periodically re-run seeded + recently used searches so
 	// the book cache is warm before returning users search again.
@@ -120,7 +120,7 @@ func main() {
 	)
 	librariesHandler := handlers.NewLibrariesHandler(database)
 	shortenHandler := handlers.NewShortenHandler(database)
-	recsHandler := handlers.NewRecommendationsHandler(goodreadsSvc, recommendationSvc)
+	recsHandler := handlers.NewRecommendationsHandler(recommendationSvc)
 
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
@@ -130,13 +130,13 @@ func main() {
 	r.Use(appmw.Security)
 
 	// JSON/redirect endpoints: compress responses, apply rate limits.
-	r.With(chimw.Compress(5), httprate.LimitByIP(5, time.Minute)).Get("/api/recommendations", recsHandler.ServeHTTP)
 	r.With(chimw.Compress(5), httprate.LimitByIP(60, time.Minute)).Get("/api/libraries", librariesHandler.ServeHTTP)
 	r.With(chimw.Compress(5), httprate.LimitByIP(30, time.Minute)).Post("/api/shorten", shortenHandler.Create)
 	r.With(chimw.Compress(5)).Get("/s/{token}", shortenHandler.Redirect)
 
 	// SSE: never compress; apply a request-rate limit per IP.
 	r.With(httprate.LimitByIP(10, time.Minute)).Get("/api/search", searchHandler.ServeHTTP)
+	r.With(httprate.LimitByIP(5, time.Minute)).Get("/api/recommendations", recsHandler.ServeHTTP)
 
 	// Prometheus metrics. Not rate-limited or compressed; if the instance is
 	// public, restrict this path at the reverse proxy.
@@ -199,6 +199,10 @@ type config struct {
 	amazonPartnerTag  string
 	amazonMarketplace string
 
+	recProfileTTL int64
+	recMax        int
+	recMaxAuthors int
+
 	prewarmEnabled     bool
 	prewarmIntervalSec int64
 	prewarmActiveDays  int64
@@ -220,6 +224,10 @@ func loadConfig() config {
 		amazonSecretKey:   os.Getenv("AMAZON_SECRET_KEY"),
 		amazonPartnerTag:  os.Getenv("AMAZON_PARTNER_TAG"),
 		amazonMarketplace: envOrDefault("AMAZON_MARKETPLACE", "www.amazon.com"),
+
+		recProfileTTL: envInt64("REC_PROFILE_TTL_SECONDS", 86400),
+		recMax:        int(envInt64("REC_MAX", 15)),
+		recMaxAuthors: int(envInt64("REC_MAX_AUTHORS", 12)),
 
 		prewarmEnabled:     envOrDefault("PREWARM_ENABLED", "true") == "true",
 		prewarmIntervalSec: envInt64("PREWARM_INTERVAL_SECONDS", 3600),

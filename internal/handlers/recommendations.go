@@ -4,19 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
+	"sync"
 
+	"github.com/wbollock/benreadin/internal/metrics"
+	"github.com/wbollock/benreadin/internal/models"
 	"github.com/wbollock/benreadin/internal/services"
 )
 
-// RecommendationsHandler handles GET /api/recommendations.
+// RecommendationsHandler handles GET /api/recommendations as an SSE stream.
 type RecommendationsHandler struct {
-	goodreads       *services.GoodreadsService
 	recommendations *services.RecommendationService
 }
 
-func NewRecommendationsHandler(gr *services.GoodreadsService, recs *services.RecommendationService) *RecommendationsHandler {
-	return &RecommendationsHandler{goodreads: gr, recommendations: recs}
+func NewRecommendationsHandler(recs *services.RecommendationService) *RecommendationsHandler {
+	return &RecommendationsHandler{recommendations: recs}
 }
 
 func (h *RecommendationsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -24,6 +25,7 @@ func (h *RecommendationsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 
 	rawURL := r.URL.Query().Get("url")
 	libraries := r.URL.Query()["libraries"]
+	refresh := r.URL.Query().Get("refresh") == "true"
 
 	if rawURL == "" {
 		http.Error(w, `{"error":"url parameter required"}`, http.StatusBadRequest)
@@ -35,9 +37,6 @@ func (h *RecommendationsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
 		return
 	}
-	if shelf := strings.TrimSpace(r.URL.Query().Get("shelf")); shelf != "" {
-		parsed.Shelf = shelf
-	}
 	if len(libraries) == 0 {
 		libraries = parsed.Libraries
 	}
@@ -46,15 +45,51 @@ func (h *RecommendationsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Fetch the shelf so we know what books to base recommendations on.
-	books, err := h.goodreads.FetchShelf(ctx, parsed.UserID, parsed.Shelf, false)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
-	recs := h.recommendations.FindRecommendations(ctx, books, libraries)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(recs)
+	var sseMu sync.Mutex
+	sendEvent := func(eventType string, data interface{}) {
+		b, err := json.Marshal(data)
+		if err != nil {
+			return
+		}
+		sseMu.Lock()
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, string(b))
+		flusher.Flush()
+		sseMu.Unlock()
+	}
+
+	// Same rationale as /api/search: push past Firefox's ~1KB dispatch
+	// threshold immediately so the client doesn't sit frozen on connect.
+	sseMu.Lock()
+	fmt.Fprintf(w, ": %s\n\n", ssePadding)
+	flusher.Flush()
+	sseMu.Unlock()
+
+	count := 0
+	err = h.recommendations.Stream(ctx, parsed.UserID, libraries, refresh,
+		func(rec models.Recommendation) {
+			count++
+			sendEvent("rec", rec)
+		},
+		func(p services.RecProgress) {
+			sendEvent("rec_progress", p)
+		},
+	)
+	if err != nil {
+		metrics.UpstreamErrorsTotal.WithLabelValues("recommendations").Inc()
+		sendEvent("error", map[string]string{"message": err.Error()})
+		return
+	}
+
+	sendEvent("recs_done", map[string]int{"count": count})
 }

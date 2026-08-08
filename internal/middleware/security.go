@@ -15,7 +15,7 @@ func Security(next http.Handler) http.Handler {
 		h.Set("Content-Security-Policy",
 			"default-src 'self'; "+
 				"img-src 'self' https://i.gr-assets.com https://images-na.ssl-images-amazon.com "+
-				"https://covers.openlibrary.org data:; "+
+				"https://covers.openlibrary.org https://*.od-cdn.com data:; "+
 				"style-src 'self' 'unsafe-inline'; "+
 				"script-src 'self' 'unsafe-inline'; "+
 				"font-src 'self'; "+

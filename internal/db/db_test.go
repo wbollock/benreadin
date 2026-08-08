@@ -9,7 +9,7 @@ import (
 // silently ignored, which once left production on journal_mode=delete with no
 // busy timeout.
 func TestOpenAppliesPragmas(t *testing.T) {
-	database, err := Open(filepath.Join(t.TempDir(), "test.db"), 60, 60, 60, 60)
+	database, err := Open(filepath.Join(t.TempDir(), "test.db"), 60, 60, 60, 60, 60)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

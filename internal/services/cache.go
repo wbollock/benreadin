@@ -21,15 +21,16 @@ func observeCache(cache string, hit bool) {
 
 // CacheService provides TTL-aware JSON caching backed by SQLite.
 type CacheService struct {
-	db         *sql.DB
-	libraryTTL int64
-	amazonTTL  int64
-	bookTTL    int64
-	shelfTTL   int64
+	db            *sql.DB
+	libraryTTL    int64
+	amazonTTL     int64
+	bookTTL       int64
+	shelfTTL      int64
+	recProfileTTL int64
 }
 
-func NewCacheService(db *sql.DB, libraryTTL, amazonTTL, bookTTL, shelfTTL int64) *CacheService {
-	return &CacheService{db: db, libraryTTL: libraryTTL, amazonTTL: amazonTTL, bookTTL: bookTTL, shelfTTL: shelfTTL}
+func NewCacheService(db *sql.DB, libraryTTL, amazonTTL, bookTTL, shelfTTL, recProfileTTL int64) *CacheService {
+	return &CacheService{db: db, libraryTTL: libraryTTL, amazonTTL: amazonTTL, bookTTL: bookTTL, shelfTTL: shelfTTL, recProfileTTL: recProfileTTL}
 }
 
 // GetLibrary retrieves a cached library result. Returns (nil, nil) on miss.
@@ -219,6 +220,41 @@ func (c *CacheService) SetShelf(cacheKey string, value interface{}) error {
 		 VALUES (?, ?, ?)
 		 ON CONFLICT(cache_key) DO UPDATE SET events_json=excluded.events_json, fetched_at=excluded.fetched_at`,
 		cacheKey, string(b), time.Now().Unix(),
+	)
+	return err
+}
+
+// GetRecProfile retrieves a cached recommendation taste profile. Returns
+// false on miss or expiry.
+func (c *CacheService) GetRecProfile(userID string, out interface{}) (bool, error) {
+	var jsonStr string
+	err := c.db.QueryRow(
+		`SELECT profile_json FROM rec_profile
+		 WHERE user_id = ? AND fetched_at > (unixepoch() - ?)`,
+		userID, c.recProfileTTL,
+	).Scan(&jsonStr)
+	if err == sql.ErrNoRows {
+		observeCache("rec_profile", false)
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("cache get rec profile: %w", err)
+	}
+	observeCache("rec_profile", true)
+	return true, json.Unmarshal([]byte(jsonStr), out)
+}
+
+// SetRecProfile stores a recommendation taste profile.
+func (c *CacheService) SetRecProfile(userID string, value interface{}) error {
+	b, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	_, err = c.db.Exec(
+		`INSERT INTO rec_profile (user_id, profile_json, fetched_at)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(user_id) DO UPDATE SET profile_json=excluded.profile_json, fetched_at=excluded.fetched_at`,
+		userID, string(b), time.Now().Unix(),
 	)
 	return err
 }

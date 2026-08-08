@@ -448,6 +448,10 @@
     document.getElementById('recs-trigger').style.display = 'none';
     document.getElementById('recs-panel').style.display = 'none';
     document.getElementById('recs-grid').innerHTML = '';
+    document.getElementById('recs-loading').style.display = 'none';
+    if (recsES) { recsES.close(); recsES = null; }
+    const recsBtn = document.getElementById('recs-btn');
+    if (recsBtn) { recsBtn.disabled = false; recsBtn.textContent = RECS_BTN_IDLE; }
   }
 
   function startStream(refresh) {
@@ -649,61 +653,84 @@
 
   // ---- Recommendations ----
 
-  function renderRecs(recs) {
-    if (!recs || recs.length === 0) {
-      recsGrid.innerHTML = '<p style="color:var(--text-muted);font-size:.875rem;padding:8px 0;">No recommendations found — try adding more books to your shelf or checking a different library.</p>';
-      recsPanel.style.display = 'block';
-      return;
-    }
-    recsGrid.innerHTML = recs.map(rec => {
-      const cover = rec.cover_url
-        ? `<img src="${escHtml(rec.cover_url)}" alt="${escHtml(rec.title)}" loading="lazy" decoding="async" width="54" height="81" onerror="this.parentElement.innerHTML='<div class=\\'rec-cover-placeholder\\'></div>'">`
-        : `<div class="rec-cover-placeholder"></div>`;
-      const libBadges = (rec.library_results || [])
-        .filter(lr => lr.status === 'available')
-        .map(lr => `<span class="badge badge-available" title="${escHtml(window.getLibName(lr.library_key))}">Available — ${escHtml(window.getLibName(lr.library_key))}</span>`)
-        .join('');
-      const because = rec.because_subject
-        ? `<div class="rec-because">From your shelf's <em>${escHtml(rec.because_subject)}</em></div>`
-        : rec.because_of_title
-          ? `<div class="rec-because">Similar to <em>${escHtml(rec.because_of_title)}</em></div>`
-          : '';
-      return `
-        <div class="rec-card">
-          <div class="rec-cover">${cover}</div>
-          <div class="rec-info">
-            <div class="rec-title">${escHtml(rec.title)}</div>
-            <div class="rec-author">${escHtml(rec.author)}</div>
-            ${because}
-            <div class="rec-badges">${libBadges}</div>
-          </div>
-        </div>`;
-    }).join('');
-    recsPanel.style.display = 'block';
+  // Recs render as ordinary book cards (same component as search results) —
+  // only the provenance line is rec-specific.
+  function buildRecCard(rec) {
+    const because = rec.because_series || rec.because_author
+      || (rec.because_subject ? `Matches your ${rec.because_subject} reading` : '');
+    const becauseHtml = because ? `<div class="rec-because">${escHtml(because)}</div>` : '';
+    return buildBookCard(rec, true, becauseHtml);
   }
 
-  document.getElementById('recs-btn').addEventListener('click', async () => {
+  const RECS_BTN_IDLE = 'Recommend me more books ↓';
+
+  let recsES = null;
+
+  document.getElementById('recs-btn').addEventListener('click', () => {
     const btn = document.getElementById('recs-btn');
     const trigger = document.getElementById('recs-trigger');
     const loading = document.getElementById('recs-loading');
-    btn.disabled = true;
-    btn.textContent = 'Finding similar titles…';
-    loading.style.display = 'flex';
+
     recsPanel.style.display = 'block';
-    try {
-      const p = new URLSearchParams(baseParams);
-      const res = await fetch('/api/recommendations?' + p.toString());
-      if (!res.ok) throw new Error('Request failed');
-      const recs = await res.json();
+    // Jump the user to the section immediately — otherwise there's no
+    // indication anything happened until books start streaming in below
+    // the (possibly long) main results grid.
+    recsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    recsPanel.classList.add('recs-panel--highlight');
+    setTimeout(() => recsPanel.classList.remove('recs-panel--highlight'), 1400);
+
+    if (recsES) return; // already running from a previous click
+
+    btn.disabled = true;
+    btn.textContent = 'Finding books for you…';
+    loading.style.display = 'flex';
+    recsGrid.innerHTML = '';
+
+    let recsFound = 0;
+    const p = new URLSearchParams(baseParams);
+    const es = recsES = new EventSource('/api/recommendations?' + p.toString());
+
+    const loadingLabel = document.getElementById('recs-loading-label');
+    es.addEventListener('rec_progress', e => {
+      const data = JSON.parse(e.data);
+      const label = { profile: 'Reading your shelves…', series: 'Checking series you’re reading…', authors: 'Checking authors you’ve enjoyed…' }[data.stage] || 'Finding books for you…';
+      if (loadingLabel) loadingLabel.textContent = label;
+    });
+
+    es.addEventListener('rec', e => {
+      const rec = JSON.parse(e.data);
+      recsFound++;
+      recsGrid.insertAdjacentHTML('beforeend', buildRecCard(rec));
+    });
+
+    es.addEventListener('recs_done', () => {
+      es.close();
+      recsES = null;
       trigger.style.display = 'none';
       loading.style.display = 'none';
-      renderRecs(recs);
-    } catch {
+      if (recsFound === 0) {
+        recsGrid.innerHTML = '<p style="color:var(--text-muted);font-size:.875rem;padding:8px 0;">No available-now Kindle matches at your libraries right now — try again later or add more books to your shelves.</p>';
+      }
+    });
+
+    es.addEventListener('error', e => {
+      try {
+        const data = JSON.parse(e.data);
+        recsGrid.innerHTML = `<p style="color:var(--red);font-size:.875rem;padding:8px 0;">${escHtml(data.message || 'Failed to load recommendations.')}</p>`;
+      } catch { /* connection-level error, handled below */ }
+    });
+
+    es.onerror = () => {
+      if (!recsES) return; // already closed via recs_done
+      recsES = null;
       loading.style.display = 'none';
       btn.disabled = false;
-      btn.textContent = 'Suggest similar';
-      recsGrid.innerHTML = '<p style="color:var(--red);font-size:.875rem;padding:8px 0;">Failed to load recommendations. Please try again.</p>';
-    }
+      btn.textContent = RECS_BTN_IDLE;
+      if (recsFound === 0) {
+        recsGrid.innerHTML = '<p style="color:var(--red);font-size:.875rem;padding:8px 0;">Failed to load recommendations. Please try again.</p>';
+      }
+      es.close();
+    };
   });
 
   if (!loadFromCache()) {

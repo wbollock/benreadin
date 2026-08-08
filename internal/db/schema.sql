@@ -67,6 +67,14 @@ INSERT OR IGNORE INTO libraries (key, name, website) VALUES
   ('vpl',       'Vancouver Public Library',         'https://www.vpl.ca/'),
   ('freelibrary','Free Library of Philadelphia',    'https://www.freelibrary.org/');
 
+-- Cached recommendation taste profile per Goodreads user: services.RecProfile
+-- JSON (author weights, series progress, exclusion set). TTL 24h by default.
+CREATE TABLE IF NOT EXISTS rec_profile (
+  user_id      TEXT PRIMARY KEY,
+  profile_json TEXT NOT NULL,
+  fetched_at   INTEGER NOT NULL
+);
+
 -- Shortlinks: shareable tokens that encode a search URL + library set
 CREATE TABLE IF NOT EXISTS shortlinks (
   id         INTEGER PRIMARY KEY,

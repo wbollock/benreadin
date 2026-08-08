@@ -9,12 +9,12 @@ import (
 
 func newTestCache(t *testing.T) *CacheService {
 	t.Helper()
-	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"), 3600, 3600, 3600, 300)
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"), 3600, 3600, 3600, 300, 86400)
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
 	t.Cleanup(func() { database.Close() })
-	return NewCacheService(database, 3600, 3600, 3600, 300)
+	return NewCacheService(database, 3600, 3600, 3600, 300, 86400)
 }
 
 func TestGetBooksBatch(t *testing.T) {

@@ -2,340 +2,479 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"net/url"
+	"math"
+	"strconv"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/wbollock/benreadin/internal/metrics"
 	"github.com/wbollock/benreadin/internal/models"
 	"golang.org/x/sync/semaphore"
 )
 
-const (
-	olWorksBySubject = "https://openlibrary.org/subjects/%s.json?limit=8&ebooks=false"
-	olSearchByTitle  = "https://openlibrary.org/search.json"
-
-	// Maximum recommendations to return.
-	maxRecs = 10
-	// Max concurrent Open Library calls for recommendations.
-	recOLConcurrency = 3
-	// Max concurrent Libby availability checks for rec candidates.
-	recLibbyConcurrency = 4
-)
-
-// recCandidate is a book surfaced from Open Library subject search.
-type recCandidate struct {
-	title          string
-	author         string
-	isbn13         string
-	coverURL       string
-	becauseOf      string
-	becauseSubject string
+// RecProgress reports recommendation-engine progress for the SSE stream.
+type RecProgress struct {
+	Stage string `json:"stage"` // "profile" | "series" | "authors"
+	Done  int    `json:"done"`
+	Total int    `json:"total"`
 }
 
-// recResult pairs a resolved recommendation with a success flag.
-type recResult struct {
-	rec models.Recommendation
-	ok  bool
-}
-
-// RecommendationService finds books similar to a shelf that are available on Libby.
+// RecommendationService finds books from the user's taste profile that are
+// available to borrow (with Kindle delivery) right now.
 type RecommendationService struct {
-	client    *http.Client
-	overdrive *OverDriveService
-	sem       *semaphore.Weighted
+	goodreads   *GoodreadsService
+	overdrive   *OverDriveService
+	openLibrary *OpenLibraryService
+	gutenberg   *GutenbergService
+	amazon      *AmazonService
+	cache       *CacheService
+	maxRecs     int
+	maxAuthors  int
+	sem         *semaphore.Weighted
 }
 
-func NewRecommendationService(overdrive *OverDriveService) *RecommendationService {
+func NewRecommendationService(
+	gr *GoodreadsService,
+	od *OverDriveService,
+	ol *OpenLibraryService,
+	gb *GutenbergService,
+	az *AmazonService,
+	cache *CacheService,
+	maxRecs, maxAuthors int,
+	concurrency int64,
+) *RecommendationService {
+	if concurrency <= 0 {
+		concurrency = 8
+	}
 	return &RecommendationService{
-		client:    &http.Client{Timeout: 10 * time.Second},
-		overdrive: overdrive,
-		sem:       semaphore.NewWeighted(recOLConcurrency),
+		goodreads:   gr,
+		overdrive:   od,
+		openLibrary: ol,
+		gutenberg:   gb,
+		amazon:      az,
+		cache:       cache,
+		maxRecs:     maxRecs,
+		maxAuthors:  maxAuthors,
+		sem:         semaphore.NewWeighted(concurrency),
 	}
 }
 
-// olSearchResult is the Open Library search API response shape (fields we care about).
-type olSearchResult struct {
-	Docs []struct {
-		Title       string   `json:"title"`
-		AuthorNames []string `json:"author_name"`
-		ISBN        []string `json:"isbn"`
-		CoverI      int      `json:"cover_i"`
-		Subject     []string `json:"subject"`
-	} `json:"docs"`
+// recCandidate is a Thunder match not yet enriched — enrichment (Open
+// Library, Gutenberg, Amazon) is deferred until a candidate is actually
+// chosen for emission, bounding those calls to at most maxRecs instead of
+// every candidate considered.
+type recCandidate struct {
+	title, author, cover, isbn, description string
+	libResults                              []models.LibraryResult
 }
 
-// olSubjectResult is the Open Library subjects endpoint response shape.
-type olSubjectResult struct {
-	Works []struct {
-		Title   string `json:"title"`
-		Authors []struct {
-			Name string `json:"name"`
-		} `json:"authors"`
-		CoverID int `json:"cover_id"`
-	} `json:"works"`
+// recState tracks emitted recommendations across concurrent goroutines so
+// series and author candidates dedupe against each other and against the
+// shelves, and stop once the cap is reached.
+type recState struct {
+	mu    sync.Mutex
+	seen  map[string]bool
+	count int
+	max   int
 }
 
-// FindRecommendations takes the enriched shelf books and the chosen library keys,
-// then returns up to maxRecs books that are available to borrow right now.
-func (s *RecommendationService) FindRecommendations(
+func newRecState(excluded []string, max int) *recState {
+	seen := make(map[string]bool, len(excluded))
+	for _, k := range excluded {
+		seen[k] = true
+	}
+	return &recState{seen: seen, max: max}
+}
+
+// tryEmit claims key for a new recommendation. Returns false if it's already
+// been recommended/shelved, or the cap has been reached.
+func (rs *recState) tryEmit(key string) bool {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if key == "" || rs.count >= rs.max || rs.seen[key] {
+		return false
+	}
+	rs.seen[key] = true
+	rs.count++
+	return true
+}
+
+func (rs *recState) full() bool {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	return rs.count >= rs.max
+}
+
+func (rs *recState) isSeen(key string) bool {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	return rs.seen[key]
+}
+
+// Stream computes recommendations and delivers them via onRec as each is
+// confirmed, reporting stage progress via onProgress. Blocks until the
+// engine is done or ctx is canceled.
+func (s *RecommendationService) Stream(
 	ctx context.Context,
-	books []models.Book,
+	userID string,
 	libraryKeys []string,
-) []models.Recommendation {
-	if len(books) == 0 || len(libraryKeys) == 0 {
-		return nil
+	refresh bool,
+	onRec func(models.Recommendation),
+	onProgress func(RecProgress),
+) error {
+	profile, err := s.getProfile(ctx, userID, refresh)
+	if err != nil {
+		return err
+	}
+	onProgress(RecProgress{Stage: "profile", Done: 1, Total: 1})
+
+	state := newRecState(profile.Excluded, s.maxRecs)
+
+	s.runSeriesStage(ctx, profile.Series, libraryKeys, state, onRec, onProgress)
+	if !state.full() {
+		s.runAuthorStage(ctx, profile.Authors, libraryKeys, state, onRec, onProgress)
+	}
+	return nil
+}
+
+// getProfile returns the cached taste profile if fresh, otherwise builds one
+// from the read + to-read shelves and caches it.
+func (s *RecommendationService) getProfile(ctx context.Context, userID string, refresh bool) (*RecProfile, error) {
+	if !refresh {
+		var cached RecProfile
+		if hit, err := s.cache.GetRecProfile(userID, &cached); err != nil {
+			slog.Warn("rec profile cache read failed", "err", err)
+		} else if hit {
+			return &cached, nil
+		}
 	}
 
-	// Build a set of shelf titles (lowercased) so we can exclude them from recs.
-	shelfTitles := make(map[string]bool, len(books))
-	for _, b := range books {
-		shelfTitles[strings.ToLower(b.Title)] = true
+	read, err := s.goodreads.FetchShelf(ctx, userID, "read", refresh)
+	if err != nil {
+		return nil, fmt.Errorf("fetch read shelf: %w", err)
+	}
+	want, err := s.goodreads.FetchShelf(ctx, userID, "to-read", refresh)
+	if err != nil {
+		return nil, fmt.Errorf("fetch to-read shelf: %w", err)
 	}
 
-	candCh := make(chan recCandidate, 64)
+	profile := buildRecProfile(read, want)
+	if err := s.cache.SetRecProfile(userID, profile); err != nil {
+		slog.Warn("rec profile cache write failed", "err", err)
+	}
+	return profile, nil
+}
+
+// enrich turns a resolved Thunder match into a full Recommendation — same
+// enrichment pipeline as a normal search result (Open Library ISBN/page
+// count backfill, Gutenberg free-book match, Amazon pricing), so rec cards
+// carry the same information and render with the same book-card component.
+func (s *RecommendationService) enrich(ctx context.Context, c recCandidate) models.Recommendation {
+	book := models.Book{
+		Title:    c.title,
+		Author:   c.author,
+		CoverURL: c.cover,
+		ISBN13:   c.isbn,
+	}
+	if c.description != "" {
+		book.Description = truncate(stripHTML(c.description), 300)
+	}
+
+	enriched := s.openLibrary.Enrich(ctx, []models.Book{book})
+	book = enriched[0]
+	s.openLibrary.FetchRating(ctx, &book)
+
+	gbResult := s.gutenberg.Lookup(book.SearchTitle(), book.Author)
+
+	var amazonResult models.AmazonResult
+	if s.amazon.Enabled() {
+		if r, err := s.amazon.GetPrices(ctx, book); err != nil {
+			slog.Debug("rec amazon prices failed", "title", book.Title, "err", err)
+		} else {
+			amazonResult = r
+		}
+	}
+
+	return models.Recommendation{
+		Book:            book,
+		LibraryResults:  c.libResults,
+		AmazonResult:    amazonResult,
+		GutenbergResult: gbResult,
+	}
+}
+
+// runSeriesStage resolves the next unread entry of each series in the
+// profile and emits a recommendation for any that are available+Kindle at
+// one of the given libraries.
+func (s *RecommendationService) runSeriesStage(
+	ctx context.Context,
+	series []RecSeries,
+	libraryKeys []string,
+	state *recState,
+	onRec func(models.Recommendation),
+	onProgress func(RecProgress),
+) {
+	total := 0
+	for _, sp := range series {
+		if _, ok := sp.NextUnread(); ok {
+			total++
+		}
+	}
+	if total == 0 {
+		return
+	}
+
 	var wg sync.WaitGroup
+	var done int32
+	var mu sync.Mutex
+	reportDone := func() {
+		mu.Lock()
+		done++
+		onProgress(RecProgress{Stage: "series", Done: int(done), Total: total})
+		mu.Unlock()
+	}
 
-	// Sample up to 5 books spread evenly across the shelf to keep API calls reasonable.
-	sample := sampleBooks(books, 5)
-
-	for _, b := range sample {
+	for _, sp := range series {
+		target, ok := sp.NextUnread()
+		if !ok {
+			continue
+		}
+		if state.full() {
+			break
+		}
 		wg.Add(1)
-		go func(b models.Book) {
+		go func(sp RecSeries, target int) {
+			defer wg.Done()
+			defer reportDone()
+			s.resolveSeriesEntry(ctx, sp, target, libraryKeys, state, onRec)
+		}(sp, target)
+	}
+	wg.Wait()
+}
+
+func (s *RecommendationService) resolveSeriesEntry(
+	ctx context.Context,
+	sp RecSeries,
+	target int,
+	libraryKeys []string,
+	state *recState,
+	onRec func(models.Recommendation),
+) {
+	var mu sync.Mutex
+	var cand recCandidate
+
+	var wg sync.WaitGroup
+	for _, libKey := range libraryKeys {
+		wg.Add(1)
+		go func(libKey string) {
 			defer wg.Done()
 			if err := s.sem.Acquire(ctx, 1); err != nil {
 				return
 			}
 			defer s.sem.Release(1)
 
-			candidates, err := s.fetchSimilar(ctx, b)
+			items, err := s.overdrive.SearchMedia(ctx, libKey, sp.Name)
 			if err != nil {
-				slog.Debug("recommendations: fetchSimilar failed", "title", b.Title, "err", err)
+				slog.Debug("series search failed", "series", sp.Name, "library", libKey, "err", err)
 				return
 			}
-			for _, c := range candidates {
-				if !shelfTitles[strings.ToLower(c.title)] {
-					c.becauseOf = b.Title
-					candCh <- c
-				}
-			}
-		}(b)
-	}
-
-	go func() {
-		wg.Wait()
-		close(candCh)
-	}()
-
-	// Deduplicate candidates by title.
-	seen := make(map[string]bool)
-	var deduped []recCandidate
-	for c := range candCh {
-		key := strings.ToLower(c.title)
-		if !seen[key] {
-			seen[key] = true
-			deduped = append(deduped, c)
-		}
-	}
-
-	if len(deduped) == 0 {
-		return nil
-	}
-
-	// Check Libby availability for each candidate, keeping only available ones.
-	libbySem := semaphore.NewWeighted(recLibbyConcurrency)
-	resultCh := make(chan recResult, len(deduped))
-	var wg2 sync.WaitGroup
-
-	for _, c := range deduped {
-		wg2.Add(1)
-		go func(c recCandidate) {
-			defer wg2.Done()
-			if err := libbySem.Acquire(ctx, 1); err != nil {
-				return
-			}
-			defer libbySem.Release(1)
-
-			candidate := models.Book{
-				Title:  c.title,
-				Author: c.author,
-				ISBN13: c.isbn13,
-			}
-
-			var libResults []models.LibraryResult
-			anyAvailable := false
-			for _, key := range libraryKeys {
-				lr, err := s.overdrive.CheckAvailability(ctx, candidate, key)
-				if err != nil {
+			for _, it := range items {
+				if !strings.EqualFold(strings.TrimSpace(it.DetailedSeries.SeriesName), sp.Name) {
 					continue
 				}
-				libResults = append(libResults, lr)
-				if lr.Status == models.StatusAvailable {
-					anyAvailable = true
+				order, ok := parseReadingOrder(it.DetailedSeries.ReadingOrder)
+				if !ok || order != float64(target) {
+					continue
 				}
-			}
-
-			if !anyAvailable {
-				resultCh <- recResult{ok: false}
+				mu.Lock()
+				if cand.title == "" {
+					cand.title, cand.author, cand.cover = it.Title, it.FirstCreatorName, it.coverURL()
+					cand.isbn, cand.description = it.bestISBN(), it.Description
+				}
+				cand.libResults = append(cand.libResults, libraryResultFromThunderItem(libKey, it))
+				mu.Unlock()
 				return
 			}
-
-			resultCh <- recResult{
-				ok: true,
-				rec: models.Recommendation{
-					Title:          c.title,
-					Author:         c.author,
-					CoverURL:       c.coverURL,
-					ISBN13:         c.isbn13,
-					LibraryResults: libResults,
-					BecauseOfTitle: c.becauseOf,
-					BecauseSubject: c.becauseSubject,
-				},
-			}
-		}(c)
+		}(libKey)
 	}
+	wg.Wait()
 
-	wg2.Wait()
-	close(resultCh)
-
-	var recs []models.Recommendation
-	for r := range resultCh {
-		if r.ok {
-			recs = append(recs, r.rec)
-			if len(recs) >= maxRecs {
-				break
-			}
-		}
+	if cand.title == "" || !anyAvailableKindle(cand.libResults) {
+		return
 	}
-
-	return recs
+	key := recTitleKey(cand.title)
+	if !state.tryEmit(key) {
+		return
+	}
+	metrics.RecsGeneratedTotal.WithLabelValues("series").Inc()
+	rec := s.enrich(ctx, cand)
+	rec.Source = "series"
+	rec.BecauseSeries = fmt.Sprintf("Next in %s — you finished #%d", sp.Name, sp.MaxRead)
+	onRec(rec)
 }
 
-// fetchSimilar returns candidate books from Open Library that share subjects
-// with the given book.
-func (s *RecommendationService) fetchSimilar(ctx context.Context, b models.Book) ([]recCandidate, error) {
-	// Search Open Library for the book to get its subjects.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, olSearchByTitle, nil)
-	if err != nil {
-		return nil, err
+// runAuthorStage fetches each profile author's candidates concurrently, then
+// emits them round-robin (so one prolific author doesn't dominate the list),
+// most-finished author first.
+func (s *RecommendationService) runAuthorStage(
+	ctx context.Context,
+	authors []RecAuthor,
+	libraryKeys []string,
+	state *recState,
+	onRec func(models.Recommendation),
+	onProgress func(RecProgress),
+) {
+	n := len(authors)
+	if n > s.maxAuthors {
+		n = s.maxAuthors
 	}
-	q := req.URL.Query()
-	q.Set("title", b.Title)
-	q.Set("author", b.Author)
-	q.Set("limit", "1")
-	q.Set("fields", "subject,cover_i,isbn,title,author_name")
-	req.URL.RawQuery = q.Encode()
-	req.Header.Set("User-Agent", "benreadin/1.0 (+https://github.com/wbollock/benreadin)")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
+	if n == 0 {
+		return
 	}
-	defer resp.Body.Close()
+	authors = authors[:n]
 
-	var sr olSearchResult
-	if err := json.NewDecoder(resp.Body).Decode(&sr); err != nil {
-		return nil, err
+	candidateLists := make([][]recCandidate, n)
+	var wg sync.WaitGroup
+	var done int32
+	var mu sync.Mutex
+	for i, a := range authors {
+		wg.Add(1)
+		go func(i int, a RecAuthor) {
+			defer wg.Done()
+			candidateLists[i] = s.authorCandidates(ctx, a, libraryKeys, state)
+			mu.Lock()
+			done++
+			onProgress(RecProgress{Stage: "authors", Done: int(done), Total: n})
+			mu.Unlock()
+		}(i, a)
 	}
-	if len(sr.Docs) == 0 || len(sr.Docs[0].Subject) == 0 {
-		return nil, nil
-	}
+	wg.Wait()
 
-	subject := pickSubject(sr.Docs[0].Subject)
-	if subject == "" {
-		return nil, nil
-	}
-
-	slog.Debug("recommendations: subject search", "book", b.Title, "subject", subject)
-
-	// Fetch works for that subject.
-	subjectSlug := strings.ToLower(strings.ReplaceAll(subject, " ", "_"))
-	subjectURL := fmt.Sprintf(olWorksBySubject, url.PathEscape(subjectSlug))
-	req2, err := http.NewRequestWithContext(ctx, http.MethodGet, subjectURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req2.Header.Set("User-Agent", "benreadin/1.0 (+https://github.com/wbollock/benreadin)")
-
-	resp2, err := s.client.Do(req2)
-	if err != nil {
-		return nil, err
-	}
-	defer resp2.Body.Close()
-
-	var subj olSubjectResult
-	if err := json.NewDecoder(resp2.Body).Decode(&subj); err != nil {
-		return nil, err
-	}
-
-	var out []recCandidate
-	for _, w := range subj.Works {
-		if strings.EqualFold(w.Title, b.Title) {
-			continue
+	// Round-robin across authors so the strongest-weighted author's picks
+	// lead, but no single author floods the list.
+	for idx := 0; ; idx++ {
+		emittedAny := false
+		for i := range candidateLists {
+			if state.full() {
+				return
+			}
+			if idx >= len(candidateLists[i]) {
+				continue
+			}
+			cand := candidateLists[i][idx]
+			key := recTitleKey(cand.title)
+			if !state.tryEmit(key) {
+				continue
+			}
+			metrics.RecsGeneratedTotal.WithLabelValues("author").Inc()
+			rec := s.enrich(ctx, cand)
+			rec.Source = "author"
+			rec.BecauseAuthor = fmt.Sprintf("You finished %d book%s by %s", authors[i].Finished, plural(authors[i].Finished), authors[i].Name)
+			onRec(rec)
+			emittedAny = true
 		}
-		author := ""
-		if len(w.Authors) > 0 {
-			author = w.Authors[0].Name
+		if !emittedAny {
+			return
 		}
-		cover := ""
-		if w.CoverID > 0 {
-			cover = fmt.Sprintf("https://covers.openlibrary.org/b/id/%d-M.jpg", w.CoverID)
-		}
-		// ISBN is not available from the subjects endpoint; OverDrive will fall back
-		// to a title+author search automatically.
-		out = append(out, recCandidate{
-			title:          w.Title,
-			author:         author,
-			coverURL:       cover,
-			becauseSubject: subject,
-		})
 	}
-	return out, nil
 }
 
-// sampleBooks returns up to n books spread evenly across the slice.
-func sampleBooks(books []models.Book, n int) []models.Book {
-	if len(books) <= n {
-		return books
+// authorCandidates searches every library for the author, keeping items
+// whose creator matches and title isn't excluded, merging the same book's
+// results across libraries. Order follows Thunder's relevance ranking from
+// the first library where each title appeared.
+func (s *RecommendationService) authorCandidates(ctx context.Context, a RecAuthor, libraryKeys []string, state *recState) []recCandidate {
+	matchKey := authorMatchKey(a.Name)
+	if matchKey == "" {
+		return nil
 	}
-	step := len(books) / n
-	out := make([]models.Book, 0, n)
-	for i := 0; i < n; i++ {
-		out = append(out, books[i*step])
+	query := authorQueryName(a.Name)
+
+	var mu sync.Mutex
+	order := []string{}
+	byKey := map[string]*recCandidate{}
+
+	var wg sync.WaitGroup
+	for _, libKey := range libraryKeys {
+		wg.Add(1)
+		go func(libKey string) {
+			defer wg.Done()
+			if err := s.sem.Acquire(ctx, 1); err != nil {
+				return
+			}
+			defer s.sem.Release(1)
+
+			items, err := s.overdrive.SearchMedia(ctx, libKey, query)
+			if err != nil {
+				slog.Debug("author search failed", "author", a.Name, "library", libKey, "err", err)
+				return
+			}
+			for _, it := range items {
+				if authorMatchKey(it.FirstCreatorName) != matchKey {
+					continue
+				}
+				key := recTitleKey(it.Title)
+				if key == "" || state.isSeen(key) {
+					continue
+				}
+				mu.Lock()
+				cand, exists := byKey[key]
+				if !exists {
+					cand = &recCandidate{
+						title:       it.Title,
+						author:      it.FirstCreatorName,
+						cover:       it.coverURL(),
+						isbn:        it.bestISBN(),
+						description: it.Description,
+					}
+					byKey[key] = cand
+					order = append(order, key)
+				}
+				cand.libResults = append(cand.libResults, libraryResultFromThunderItem(libKey, it))
+				mu.Unlock()
+			}
+		}(libKey)
+	}
+	wg.Wait()
+
+	out := make([]recCandidate, 0, len(order))
+	for _, key := range order {
+		cand := byKey[key]
+		if anyAvailableKindle(cand.libResults) {
+			out = append(out, *cand)
+		}
 	}
 	return out
 }
 
-// pickSubject chooses the most useful subject from an Open Library subject list.
-// It prefers subjects in the 2-5 word range and skips very generic ones.
-var genericSubjects = map[string]bool{
-	"fiction": true, "nonfiction": true, "literature": true,
-	"novels": true, "short stories": true, "essays": true,
-	"biography": true, "history": true, "poetry": true,
-	"accessible book": true, "protected daisy": true,
-	"in library": true, "overdrive": true,
+func anyAvailableKindle(results []models.LibraryResult) bool {
+	for _, lr := range results {
+		if lr.Status == models.StatusAvailable && lr.HasKindle {
+			return true
+		}
+	}
+	return false
 }
 
-func pickSubject(subjects []string) string {
-	for _, s := range subjects {
-		low := strings.ToLower(s)
-		if genericSubjects[low] {
-			continue
-		}
-		words := strings.Fields(s)
-		if len(words) >= 2 && len(words) <= 5 {
-			return s
-		}
+func plural(n int) string {
+	if n == 1 {
+		return ""
 	}
-	// Fall back to first non-generic subject of any length.
-	for _, s := range subjects {
-		if !genericSubjects[strings.ToLower(s)] {
-			return s
-		}
+	return "s"
+}
+
+// parseReadingOrder parses Thunder's detailedSeries.readingOrder ("20",
+// "3.5") and reports whether it's a whole-number entry — fractional entries
+// are novella side-stories, not the mainline "next book".
+func parseReadingOrder(s string) (float64, bool) {
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0, false
 	}
-	return ""
+	if v != math.Trunc(v) {
+		return 0, false
+	}
+	return v, true
 }

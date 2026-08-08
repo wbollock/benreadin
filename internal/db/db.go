@@ -15,7 +15,7 @@ var schema string
 
 // Open opens (or creates) the SQLite database at path, runs migrations, and
 // purges stale cache rows older than the given TTLs.
-func Open(path string, libraryTTL, amazonTTL, bookTTL, shelfTTL int64) (*sql.DB, error) {
+func Open(path string, libraryTTL, amazonTTL, bookTTL, shelfTTL, recProfileTTL int64) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create db dir: %w", err)
 	}
@@ -39,7 +39,7 @@ func Open(path string, libraryTTL, amazonTTL, bookTTL, shelfTTL int64) (*sql.DB,
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
-	if err := purgeStale(db, libraryTTL, amazonTTL, bookTTL, shelfTTL); err != nil {
+	if err := purgeStale(db, libraryTTL, amazonTTL, bookTTL, shelfTTL, recProfileTTL); err != nil {
 		return nil, fmt.Errorf("purge stale: %w", err)
 	}
 
@@ -70,7 +70,7 @@ func addColumnIfMissing(db *sql.DB, table, column, decl string) error {
 	return err
 }
 
-func purgeStale(db *sql.DB, libraryTTL, amazonTTL, bookTTL, shelfTTL int64) error {
+func purgeStale(db *sql.DB, libraryTTL, amazonTTL, bookTTL, shelfTTL, recProfileTTL int64) error {
 	_, err := db.Exec(
 		`DELETE FROM library_cache WHERE fetched_at <= (unixepoch() - ?)`,
 		libraryTTL,
@@ -95,6 +95,13 @@ func purgeStale(db *sql.DB, libraryTTL, amazonTTL, bookTTL, shelfTTL int64) erro
 	_, err = db.Exec(
 		`DELETE FROM book_cache WHERE fetched_at <= (unixepoch() - ?)`,
 		bookTTL,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(
+		`DELETE FROM rec_profile WHERE fetched_at <= (unixepoch() - ?)`,
+		recProfileTTL,
 	)
 	return err
 }

@@ -27,7 +27,7 @@ function availabilityBadge(result) {
   }
 }
 
-function buildBookCard(event, show) {
+function buildBookCard(event, show, extra) {
   const { book, library_results, amazon_result, gutenberg_result } = event;
 
   // Library rows — badge links to OverDrive page where Kindle delivery is available
@@ -135,8 +135,9 @@ function buildBookCard(event, show) {
     ? `<span class="book-pages">${book.page_count} pages</span>`
     : '';
 
+  const isOLRating = book.rating_source === 'openlibrary';
   const avgRating = book.average_rating
-    ? `<span class="rating-avg" title="Goodreads average rating">★ ${book.average_rating.toFixed(2)}</span>`
+    ? `<span class="rating-avg" title="${isOLRating ? 'Open Library community rating (not Goodreads)' : 'Goodreads average rating'}">★ ${book.average_rating.toFixed(2)}${isOLRating ? ` <span class="rating-source-tag">OL${book.ratings_count ? '·' + book.ratings_count : ''}</span>` : ''}</span>`
     : '';
   const userRating = book.user_rating
     ? `<span class="rating-user" title="Your Goodreads rating">${'★'.repeat(book.user_rating)}${'☆'.repeat(5 - book.user_rating)}</span>`
@@ -160,6 +161,7 @@ function buildBookCard(event, show) {
             ${ratingStr}
           </div>
           <div class="book-author">${escHtml(book.author)}</div>
+          ${extra || ''}
           ${pageCount ? `<div class="book-meta">${pageCount}</div>` : ''}
           ${description}
         </div>

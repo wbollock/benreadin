@@ -48,4 +48,10 @@ var (
 		Help:    "Duration of uncached Goodreads shelf fetches.",
 		Buckets: prometheus.DefBuckets,
 	})
+
+	// RecsGeneratedTotal counts recommendations emitted, by source engine.
+	RecsGeneratedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "benreadin_recs_generated_total",
+		Help: "Recommendations generated, by source.",
+	}, []string{"source"}) // series | author | subject
 )
