@@ -185,6 +185,7 @@ func (s *RecommendationService) enrich(ctx context.Context, c recCandidate) mode
 	enriched := s.openLibrary.Enrich(ctx, []models.Book{book})
 	book = enriched[0]
 	s.openLibrary.FetchRating(ctx, &book)
+	book.Genre = models.GenreFromResults(c.libResults)
 
 	gbResult := s.gutenberg.Lookup(book.SearchTitle(), book.Author)
 

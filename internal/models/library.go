@@ -21,6 +21,24 @@ type LibraryResult struct {
 	EstimatedWait   int                `json:"estimated_wait_days"`
 	OverDriveURL    string             `json:"overdrive_url,omitempty"`
 	HasKindle       bool               `json:"has_kindle,omitempty"` // true if the Libby/OverDrive title includes a Kindle delivery format
+
+	// Genre is the OverDrive subject-derived fiction/nonfiction classification
+	// for the catalog entry that matched. Carried here (rather than looked up
+	// separately) because it comes free with the availability check; rolled up
+	// onto Book.Genre via GenreFromResults rather than exposed per-library.
+	Genre string `json:"-"`
+}
+
+// GenreFromResults returns the first non-empty Genre reported across a book's
+// per-library results — the OverDrive subject classification, whichever
+// library's catalog entry carried it first. Empty if none did.
+func GenreFromResults(results []LibraryResult) string {
+	for _, r := range results {
+		if r.Genre != "" {
+			return r.Genre
+		}
+	}
+	return ""
 }
 
 // Library is a row from the libraries directory table.

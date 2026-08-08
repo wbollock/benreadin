@@ -351,6 +351,8 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 			}
 			libWg.Wait()
 
+			book.Genre = models.GenreFromResults(libResults)
+
 			gbResult := h.gutenberg.Lookup(book.SearchTitle(), book.Author)
 
 			resultCh <- result{

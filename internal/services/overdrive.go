@@ -72,6 +72,31 @@ type thunderItem struct {
 		SeriesName   string `json:"seriesName"`
 		ReadingOrder string `json:"readingOrder"` // numeric string, e.g. "20" or "3.5"
 	} `json:"detailedSeries"`
+	Subjects []thunderSubject `json:"subjects"`
+}
+
+type thunderSubject struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// classifyGenre maps OverDrive subject tags to a coarse fiction/nonfiction
+// label. OverDrive reliably tags nonfiction titles with an explicit
+// "Nonfiction" subject; fiction titles instead carry a subject whose name
+// contains "Fiction" (Fiction, Historical Fiction, Science Fiction, ...).
+// Titles with neither are left unclassified rather than guessed.
+func classifyGenre(subjects []thunderSubject) string {
+	for _, s := range subjects {
+		if s.Name == "Nonfiction" {
+			return "nonfiction"
+		}
+	}
+	for _, s := range subjects {
+		if strings.Contains(s.Name, "Fiction") {
+			return "fiction"
+		}
+	}
+	return ""
 }
 
 func (t *thunderItem) hasKindle() bool {
@@ -212,6 +237,7 @@ func (s *OverDriveService) checkUncached(ctx context.Context, book models.Book, 
 		}
 
 		result.HasKindle = item.hasKindle()
+		result.Genre = classifyGenre(item.Subjects)
 	}
 
 	if err := s.cache.SetLibrary(libraryKey, query, result); err != nil {
@@ -264,6 +290,7 @@ func libraryResultFromThunderItem(libraryKey string, item thunderItem) models.Li
 		HoldsCount:      item.HoldsCount,
 		EstimatedWait:   item.EstimatedWait,
 		HasKindle:       item.hasKindle(),
+		Genre:           classifyGenre(item.Subjects),
 	}
 	mediaID := item.ID
 	if mediaID == "" {

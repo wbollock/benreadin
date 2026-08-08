@@ -23,6 +23,11 @@ type Book struct {
 	// rating of their own) rather than read from the Goodreads shelf RSS.
 	RatingsCount int    `json:"ratings_count,omitempty"`
 	RatingSource string `json:"rating_source,omitempty"` // "openlibrary" | "" (Goodreads)
+
+	// Genre is a coarse fiction/nonfiction classification backfilled from
+	// OverDrive catalog subject tags once availability is checked (see
+	// LibraryResult.Genre / GenreFromResults). Empty when unclassified.
+	Genre string `json:"genre,omitempty"` // "fiction" | "nonfiction" | ""
 }
 
 // Goodreads appends series info as a trailing parenthetical containing "#",

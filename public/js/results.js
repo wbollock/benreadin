@@ -8,6 +8,7 @@
   const resultsHeader  = document.getElementById('results-header');
   const resultsCount   = document.getElementById('results-count');
   const filterBtns     = document.querySelectorAll('#filter-availability .filter-chip');
+  const genreBtns      = document.querySelectorAll('#filter-genre .filter-chip');
   const sortSelect     = document.getElementById('sort-select');
   const shuffleBtn     = document.getElementById('shuffle-btn');
   const recsPanel      = document.getElementById('recs-panel');
@@ -59,6 +60,14 @@
   function saveFilters() {
     storage.set(FILTER_KEY, JSON.stringify([...activeFilters]));
   }
+
+  // Genre defaults to "All" — a single-select axis (fiction / nonfiction /
+  // all), independent of the availability/attribute chips above.
+  const GENRE_KEY = 'benreadin_genre_filter';
+  let activeGenre = (function restoreGenreFilter() {
+    const saved = storage.get(GENRE_KEY);
+    return (saved === 'fiction' || saved === 'nonfiction') ? saved : '';
+  })();
 
   // ---- Utilities ----
 
@@ -126,7 +135,13 @@
     return false;
   }
 
+  function bookMatchesGenre(event) {
+    if (!activeGenre) return true;
+    return event.book && event.book.genre === activeGenre;
+  }
+
   function filterBook(event) {
+    if (!bookMatchesGenre(event)) return false;
     if (activeFilters.size === 0) return true;
     // Availability chips (available / on-hold / not-found) are mutually exclusive,
     // so a book matching ANY selected one qualifies on that axis.
@@ -278,6 +293,21 @@
     });
   });
 
+  function syncGenreUI() {
+    genreBtns.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.genre === (activeGenre || 'all'));
+    });
+  }
+
+  genreBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeGenre = btn.dataset.genre === 'all' ? '' : btn.dataset.genre;
+      storage.set(GENRE_KEY, activeGenre);
+      syncGenreUI();
+      applyView();
+    });
+  });
+
   // Shuffle is a standalone toggle next to the Sort dropdown, not a dropdown
   // option: while active the button is highlighted and the select shows no
   // selection; picking any sort exits shuffle mode.
@@ -409,6 +439,7 @@
   }
   sortSelect.value = activeSort;
   syncFilterUI();
+  syncGenreUI();
   syncSortUI();
 
   let activeES = null;
