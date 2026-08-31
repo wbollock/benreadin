@@ -93,6 +93,18 @@
     });
   }
 
+  // ---- "Don't know your URL?" finder ----
+  const urlFinderToggle = document.getElementById('url-finder-toggle');
+  const urlFinder = document.getElementById('url-finder');
+  if (urlFinderToggle && urlFinder) {
+    urlFinderToggle.addEventListener('click', () => {
+      const open = urlFinder.hidden;
+      urlFinder.hidden = !open;
+      urlFinderToggle.setAttribute('aria-expanded', String(open));
+      urlFinderToggle.textContent = open ? 'hide' : "don't know your URL?";
+    });
+  }
+
   // ---- Aliases (localStorage) ----
   function loadAliases() {
     try { return JSON.parse(storage.get('benreadin_lib_aliases') || '{}'); } catch { return {}; }
