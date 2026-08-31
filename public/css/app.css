@@ -269,6 +269,45 @@ label {
   color: var(--accent);
   font-family: var(--font-mono);
 }
+.url-finder-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.url-finder-toggle:hover { color: var(--accent-dark); }
+
+.url-finder {
+  margin-top: 10px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.url-finder-steps {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: .8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.url-finder-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.url-finder-note {
+  font-size: .72rem;
+  color: var(--text-subtle);
+}
 
 input[type="text"],
 input[type="url"] {
@@ -685,6 +724,12 @@ input::placeholder { color: var(--text-subtle); }
   font-weight: 700;
   letter-spacing: -.2px;
 }
+.results-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .results-count {
   font-size: .8rem;
   color: var(--text-muted);
@@ -779,6 +824,18 @@ input::placeholder { color: var(--text-subtle); }
   font-weight: 500;
   margin-top: 2px;
 }
+/* Sits directly under .book-author (no preceding element with its own
+   bottom margin to borrow spacing from), so it needs a positive top margin
+   rather than .book-meta's -3px, which was tuned for sitting under the
+   description block further down the card. */
+.book-meta-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+
 .book-meta {
   display: flex;
   flex-wrap: wrap;
@@ -929,6 +986,30 @@ input::placeholder { color: var(--text-subtle); }
   line-height: 1.4;
 }
 
+/* Shown when none of the checked libraries offer a Kindle format for a book
+   that does exist in their catalogs (available/wait/unavailable, not_found
+   excluded — absence from the catalog says nothing about Kindle support). */
+.tag-no-kindle {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--red-bg);
+  color: var(--red);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+.book-card--no-kindle { border-left: 3px solid var(--red); padding-left: 15px; }
+
+.book-added {
+  display: inline-block;
+  font-size: .72rem;
+  color: var(--text-subtle);
+  margin-top: 2px;
+}
+
 /* ================================================================
    PRICE PILLS
    ================================================================ */
@@ -1013,6 +1094,10 @@ input::placeholder { color: var(--text-subtle); }
 .filter-chip-gutenberg:hover { border-color: var(--green); color: var(--green); background: var(--green-bg); }
 .filter-chip-gutenberg.active { background: var(--green); border-color: var(--green); color: #fff; }
 
+.filter-chip-soon { border-color: var(--accent-glow); color: var(--accent); }
+.filter-chip-soon:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+.filter-chip-soon.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
 .filter-select {
   padding: 5px 10px;
   border: 1px solid var(--border);
@@ -1027,6 +1112,68 @@ input::placeholder { color: var(--text-subtle); }
   transition: border-color var(--transition);
 }
 .filter-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+.search-input {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: .8rem;
+  outline: none;
+  width: 220px;
+  max-width: 100%;
+  transition: border-color var(--transition);
+}
+.search-input::placeholder { color: var(--text-subtle); }
+.search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+/* ================================================================
+   PAGINATION
+   ================================================================ */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 28px 0 8px;
+}
+.pagination-indicator {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 100px;
+  text-align: center;
+}
+.pagination-bar button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+/* Shown when a text search has zero matches under the active filters but
+   does match something elsewhere on the shelf — see applyView() in results.js. */
+.search-expand-notice {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--amber-bg);
+  color: var(--amber);
+  border: 1px solid rgba(156,106,29,.25);
+  border-radius: var(--radius-sm);
+  font-size: .8rem;
+  font-weight: 500;
+}
+.search-expand-notice .link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 4px;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
 
 /* ================================================================
    LEGEND
@@ -1166,10 +1313,10 @@ input::placeholder { color: var(--text-subtle); }
 }
 .recs-title {
   font-family: var(--font-display);
-  font-size: 1.05rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: var(--text);
-  letter-spacing: -.1px;
+  letter-spacing: -.2px;
 }
 .recs-subtitle { font-size: .8rem; color: var(--text-muted); margin: 4px 0 20px; }
 .recs-toggle {
@@ -1189,7 +1336,11 @@ input::placeholder { color: var(--text-subtle); }
 
 /* Rec cards render as ordinary .book-card elements (see .book-grid); this
    provenance line is inserted into the card between author and page count. */
-.rec-because { font-size: .72rem; color: var(--text-subtle); font-style: italic; margin-top: 2px; }
+/* margin-bottom matters here: .book-meta's -3px top margin (tuned for
+   sitting under the description block) would otherwise collapse with this
+   element's default 0 bottom margin into a net -3px gap, overlapping the
+   page-count pill that follows. */
+.rec-because { font-size: .72rem; color: var(--text-subtle); font-style: italic; margin: 2px 0 6px; }
 
 /* ================================================================
    ERROR BANNER

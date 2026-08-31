@@ -13,6 +13,45 @@ function formatPrice(n) {
   return '$' + n.toFixed(2);
 }
 
+// coverPlaceholder renders a letter-avatar in place of a missing cover image
+// (no blank box) — first letter of the title, uppercase. forJsAttr produces
+// the single-quoted variant for embedding inside a double-quoted onerror="".
+function coverPlaceholder(title, forJsAttr) {
+  const letter = escHtml(String(title || '?').trim().charAt(0).toUpperCase() || '?');
+  return forJsAttr
+    ? `<div class=\\'book-cover-placeholder\\'>${letter}</div>`
+    : `<div class="book-cover-placeholder">${letter}</div>`;
+}
+
+// neverKindle reports whether none of the libraries that actually carry this
+// book (found in their catalog, i.e. status !== 'not_found') offer a Kindle
+// format. A book absent from every catalog says nothing about Kindle support,
+// so it doesn't count as a "gap" — only titles the library owns but never
+// delivers to Kindle do.
+function neverKindle(libraryResults) {
+  const found = (libraryResults || []).filter(lr => lr.status !== 'not_found');
+  return found.length > 0 && found.every(lr => !lr.has_kindle);
+}
+
+// relativeAdded turns a date_added_unix (seconds) into a short "Added Xd ago"
+// label for the "Recently added" sort view.
+function relativeAdded(unixSeconds) {
+  if (!unixSeconds) return '';
+  const days = Math.floor((Date.now() / 1000 - unixSeconds) / 86400);
+  if (days <= 0) return 'Added today';
+  if (days === 1) return 'Added yesterday';
+  if (days < 30) return `Added ${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `Added ${months}mo ago`;
+  return `Added ${Math.floor(months / 12)}y ago`;
+}
+
+// PLACEHOLDER — swap for the real Amazon Associates tracking ID once
+// approved. Used to build a "Buy on Amazon" link that works today (a plain
+// product search, no PA-API dependency) and starts earning affiliate credit
+// the moment this constant is set for real — no other code change needed.
+const AMAZON_AFFILIATE_TAG = 'benreadin-20';
+
 function availabilityBadge(result) {
   const kindle = result.has_kindle ? ' <span class="badge-kindle-pill" title="Kindle delivery available">K</span>' : '';
   switch (result.status) {
@@ -84,7 +123,12 @@ function buildBookCard(event, show, extra) {
   }
 
   if (gutenberg_result) {
-    primaryBtns += `<a href="${escHtml(gutenberg_result.epub_url)}" target="_blank" rel="noopener" class="btn-gutenberg-sm" title="Download EPUB, then send via Send to Kindle app or your @kindle.com email">Download EPUB ↗</a>`;
+    // Link to the Gutenberg book page rather than the file directly — matching
+    // is title/author-based and occasionally picks the wrong edition (or an
+    // unrelated book that happens to share a title), so the user should land
+    // somewhere they can confirm it's the right book before downloading.
+    const gutenbergPageUrl = `https://www.gutenberg.org/ebooks/${gutenberg_result.id}`;
+    primaryBtns += `<a href="${escHtml(gutenbergPageUrl)}" target="_blank" rel="noopener" class="btn-gutenberg-sm" title="Opens the Project Gutenberg book page — confirm it's the right edition, then download EPUB and send via Send to Kindle app or your @kindle.com email">View on Project Gutenberg ↗</a>`;
   }
 
   // Kindle buttons
@@ -110,6 +154,12 @@ function buildBookCard(event, show, extra) {
 
   if (amazon_result?.affiliate_url) {
     kindleBtns += `<a href="${escHtml(amazon_result.affiliate_url)}" target="_blank" rel="noopener" class="btn-secondary btn-sm">Amazon ↗</a>`;
+  } else {
+    // No PA-API result (Amazon pricing is optional — see CLAUDE.md) — fall
+    // back to a plain Amazon search carrying the affiliate tag directly, same
+    // fallback pattern as the Kindle search/preview links above.
+    const buyOnAmazonUrl = `https://www.amazon.com/s?k=${encodeURIComponent(kindleSearchQ)}&tag=${encodeURIComponent(AMAZON_AFFILIATE_TAG)}`;
+    kindleBtns += `<a href="${buyOnAmazonUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buy on Amazon ↗</a>`;
   }
   if (grUrl) {
     kindleBtns += `<a href="${grUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="View on Goodreads">GR ↗</a>`;
@@ -124,8 +174,8 @@ function buildBookCard(event, show, extra) {
 
   // Cover image — width/height prevent CLS while image loads.
   const cover = book.cover_url
-    ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}" loading="lazy" decoding="async" width="76" height="114" onerror="this.parentElement.innerHTML='<div class=\\'book-cover-placeholder\\'></div>'">`
-    : `<div class="book-cover-placeholder"></div>`;
+    ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}" loading="lazy" decoding="async" width="76" height="114" onerror="this.parentElement.innerHTML='${coverPlaceholder(book.title, true)}'">`
+    : coverPlaceholder(book.title);
 
   const description = book.description
     ? `<details class="book-description-details"><summary>About this book</summary><p class="book-description">${escHtml(book.description)}</p></details>`
@@ -151,8 +201,16 @@ function buildBookCard(event, show, extra) {
   const statusPriority = { available: 0, wait: 1, unavailable: 2, not_found: 3 };
   const bestSt = statuses.reduce((best, s) => (statusPriority[s] ?? 3) < (statusPriority[best] ?? 3) ? s : best, statuses[0] || 'not_found');
 
+  const noKindleAnywhere = neverKindle(library_results);
+  const noKindleTag = noKindleAnywhere
+    ? `<span class="tag-no-kindle" title="None of the checked libraries offer this as a Kindle format">No Kindle</span>`
+    : '';
+  const addedStr = book.date_added_unix
+    ? `<span class="book-added">${escHtml(relativeAdded(book.date_added_unix))}</span>`
+    : '';
+
   return `
-    <article class="book-card${show === false ? ' hidden' : ''}" data-status="${escHtml(bestSt)}" data-grid="${escHtml(book.goodreads_id || '')}">
+    <article class="book-card${show === false ? ' hidden' : ''}${noKindleAnywhere ? ' book-card--no-kindle' : ''}" data-status="${escHtml(bestSt)}" data-grid="${escHtml(book.goodreads_id || '')}">
       <div class="book-cover">${cover}</div>
       <div class="book-info">
         <div>
@@ -161,6 +219,7 @@ function buildBookCard(event, show, extra) {
             ${ratingStr}
           </div>
           <div class="book-author">${escHtml(book.author)}</div>
+          ${noKindleTag || addedStr ? `<div class="book-meta-top">${noKindleTag}${addedStr}</div>` : ''}
           ${extra || ''}
           ${pageCount ? `<div class="book-meta">${pageCount}</div>` : ''}
           ${description}
@@ -201,8 +260,8 @@ function buildSkeletonCard(_, index) {
 // arrives. index is used for a staggered cascade animation.
 function buildStubCard(book, libraryKeys, index) {
   const cover = book.cover_url
-    ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}" loading="lazy" decoding="async" width="76" height="114" onerror="this.parentElement.innerHTML='<div class=\\'book-cover-placeholder\\'></div>'">`
-    : `<div class="book-cover-placeholder"></div>`;
+    ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}" loading="lazy" decoding="async" width="76" height="114" onerror="this.parentElement.innerHTML='${coverPlaceholder(book.title, true)}'">`
+    : coverPlaceholder(book.title);
 
   const avgRating = book.average_rating
     ? `<span class="rating-avg" title="Goodreads average rating">★ ${book.average_rating.toFixed(2)}</span>`

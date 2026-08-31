@@ -44,6 +44,7 @@
           <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         </button>
         <button id="copy-link-btn" class="btn-copy-link" style="display:none;" title="Copy shareable link">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           <span class="btn-text">Copy link</span>
         </button>
         <button id="refresh-btn" class="btn-secondary" title="Refresh availability — clears cache and re-fetches">
@@ -78,8 +79,13 @@
       <div id="results-header" style="display:none;">
         <div class="results-header">
           <h2>Results <span class="results-count" id="results-count"></span></h2>
-          <div id="recs-trigger" style="display:none;">
-            <button id="recs-btn" class="btn-recs">Recommend me more books ↓</button>
+          <div class="results-header-actions">
+            <div id="kindle-report-trigger" style="display:none;">
+              <button id="kindle-report-btn" class="btn-secondary btn-sm" type="button">Kindle gaps report</button>
+            </div>
+            <div id="recs-trigger" style="display:none;">
+              <button id="recs-btn" class="btn-recs">Recommend me more books ↓</button>
+            </div>
           </div>
         </div>
 
@@ -94,6 +100,11 @@
         </div>
 
         <div class="filter-bar">
+          <!-- Text search -->
+          <div class="filter-group">
+            <span class="filter-label">Search</span>
+            <input type="search" class="search-input" id="search-input" placeholder="Search title or author…" aria-label="Search title or author">
+          </div>
           <!-- Availability filter -->
           <div class="filter-group">
             <span class="filter-label">Show</span>
@@ -102,6 +113,7 @@
               <button class="filter-chip" data-filter="available">Available now</button>
               <button class="filter-chip" data-filter="wait">On hold</button>
               <button class="filter-chip" data-filter="not_found">Not on Libby</button>
+              <button class="filter-chip filter-chip-soon" data-filter="ready_soon" title="On hold with 3 days or less estimated wait">Ready soon</button>
               <button class="filter-chip filter-chip-kindle" data-filter="kindle">Kindle</button>
               <button class="filter-chip filter-chip-gutenberg" data-filter="gutenberg">Free (Gutenberg)</button>
             </div>
@@ -122,17 +134,37 @@
               <option value="available_first">Available first</option>
               <option value="wait_asc">Shortest wait</option>
               <option value="rating_desc">Highest rated</option>
+              <option value="added_desc">Recently added</option>
               <option value="default">Shelf order</option>
               <option value="title_asc">Title A→Z</option>
               <option value="title_desc">Title Z→A</option>
             </select>
             <button class="filter-chip" id="shuffle-btn" type="button" title="Random order — click again to reshuffle">Shuffle</button>
           </div>
+          <!-- Page size -->
+          <div class="filter-group">
+            <span class="filter-label">Per page</span>
+            <select class="filter-select" id="page-size-select">
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+              <option value="all">All</option>
+            </select>
+          </div>
         </div>
+
+        <div id="search-expand-notice" class="search-expand-notice" style="display:none;"></div>
       </div>
 
       <!-- Book grid -->
       <div class="book-grid" id="book-grid"></div>
+
+      <!-- Pagination -->
+      <div class="pagination-bar" id="pagination-bar" style="display:none;">
+        <button class="btn-secondary btn-sm" id="page-prev" type="button">← Prev</button>
+        <span class="pagination-indicator" id="page-indicator"></span>
+        <button class="btn-secondary btn-sm" id="page-next" type="button">Next →</button>
+      </div>
 
       <!-- Recommendations panel -->
       <div id="recs-panel" class="recs-panel" style="display:none;">
@@ -145,6 +177,17 @@
           <span class="recs-spinner"></span> <span id="recs-loading-label">Finding books for you…</span>
         </div>
         <div class="recs-grid book-grid" id="recs-grid"></div>
+      </div>
+
+      <!-- Kindle gaps report: books that are in the catalog somewhere but never
+           carry a Kindle format at any checked library. -->
+      <div id="kindle-report-panel" class="recs-panel" style="display:none;">
+        <div class="recs-header">
+          <h2 class="recs-title">Never available on Kindle</h2>
+          <button class="recs-toggle" id="kindle-report-toggle" aria-expanded="true">Hide</button>
+        </div>
+        <p class="recs-subtitle" id="kindle-report-subtitle">Books your libraries carry (or have on hold) but never offer as a Kindle format.</p>
+        <div class="recs-grid book-grid" id="kindle-report-grid"></div>
       </div>
 
     </div>

@@ -15,6 +15,19 @@
   const recsGrid       = document.getElementById('recs-grid');
   const recsToggle     = document.getElementById('recs-toggle');
   const loadingDetail  = document.getElementById('loading-detail');
+  const kindleReportTrigger = document.getElementById('kindle-report-trigger');
+  const kindleReportBtn     = document.getElementById('kindle-report-btn');
+  const kindleReportPanel   = document.getElementById('kindle-report-panel');
+  const kindleReportGrid    = document.getElementById('kindle-report-grid');
+  const kindleReportToggle  = document.getElementById('kindle-report-toggle');
+  const kindleReportSubtitle = document.getElementById('kindle-report-subtitle');
+  const searchInput    = document.getElementById('search-input');
+  const paginationBar  = document.getElementById('pagination-bar');
+  const pagePrevBtn    = document.getElementById('page-prev');
+  const pageNextBtn    = document.getElementById('page-next');
+  const pageIndicator  = document.getElementById('page-indicator');
+  const pageSizeSelect = document.getElementById('page-size-select');
+  const searchExpandNotice = document.getElementById('search-expand-notice');
 
   // All received book events, in arrival order (= shelf order).
   const allBooks = [];
@@ -25,8 +38,23 @@
   let completedBooks = 0;
 
   const activeFilters = new Set();
-  // Availability chips are mutually-exclusive states; the rest narrow the result.
-  const AVAILABILITY_FILTERS = ['available', 'wait', 'not_found'];
+  // Availability-axis chips are OR'd together (selecting several shows books
+  // matching any of them); the rest (kindle/gutenberg) AND-narrow the result.
+  // "ready_soon" belongs on this axis, not with kindle/gutenberg — it's a
+  // refinement of the "wait" status, so it must be able to match on its own
+  // without requiring the default "available" chip to also match (which,
+  // since a book can't be both available and on hold, would always be empty).
+  const AVAILABILITY_FILTERS = ['available', 'wait', 'not_found', 'ready_soon'];
+  // "Ready soon" = on hold with a short estimated wait — books about to come
+  // off the queue. Threshold is deliberately not user-configurable.
+  const READY_SOON_DAYS = 3;
+  // Text search narrows title/author, in-memory only — a one-off lens on the
+  // current results, not a saved preference like the filter chips.
+  let searchQuery = '';
+  // Pagination: page number is session-only (a fresh search always starts on
+  // page 1); pageSizeSetting is restored from storage further below, once
+  // the `storage` helper exists.
+  let currentPage = 1;
   const SORT_KEY = 'benreadin_sort';
   // Stable per-book random keys for the "random" sort. Assigned lazily and kept
   // for the life of the page so streaming in new books (SSE) doesn't reshuffle
@@ -46,10 +74,21 @@
 
   let activeSort = storage.get(SORT_KEY) || 'rating_desc';
 
+  // Page size is a saved preference like sort/filters.
+  const PAGE_SIZE_KEY = 'benreadin_page_size';
+  const VALID_PAGE_SIZES = ['50', '100', '200', 'all'];
+  let pageSizeSetting = (function restorePageSize() {
+    const saved = storage.get(PAGE_SIZE_KEY);
+    return VALID_PAGE_SIZES.includes(saved) ? saved : '100';
+  })();
+  function pageSizeValue() {
+    return pageSizeSetting === 'all' ? Infinity : parseInt(pageSizeSetting, 10);
+  }
+
   // Filters default to Available + Kindle; any change the user makes is saved
   // as their new default (the "All" chip saves an empty set = show everything).
   const FILTER_KEY = 'benreadin_filters';
-  const VALID_FILTERS = [...AVAILABILITY_FILTERS, 'kindle', 'gutenberg'];
+  const VALID_FILTERS = [...AVAILABILITY_FILTERS, 'kindle', 'gutenberg', 'ready_soon'];
   (function restoreFilters() {
     let saved = null;
     try { saved = JSON.parse(storage.get(FILTER_KEY)); } catch { /* corrupt */ }
@@ -132,6 +171,10 @@
     if (filter === 'not_found') return status === 'not_found' || status === 'unavailable';
     if (filter === 'kindle') return (event.library_results || []).some(lr => lr.has_kindle);
     if (filter === 'gutenberg') return !!event.gutenberg_result;
+    if (filter === 'ready_soon') {
+      const w = minWait(event.library_results);
+      return status === 'wait' && Number.isFinite(w) && w <= READY_SOON_DAYS;
+    }
     return false;
   }
 
@@ -140,7 +183,15 @@
     return event.book && event.book.genre === activeGenre;
   }
 
+  function bookMatchesSearch(event) {
+    if (!searchQuery) return true;
+    const b = event.book || {};
+    return (b.title || '').toLowerCase().includes(searchQuery)
+        || (b.author || '').toLowerCase().includes(searchQuery);
+  }
+
   function filterBook(event) {
+    if (!bookMatchesSearch(event)) return false;
     if (!bookMatchesGenre(event)) return false;
     if (activeFilters.size === 0) return true;
     // Availability chips (available / on-hold / not-found) are mutually exclusive,
@@ -178,6 +229,11 @@
         break;
       case 'rating_desc':
         copy.sort((a, b) => (b.book.average_rating || 0) - (a.book.average_rating || 0));
+        break;
+      case 'added_desc':
+        // Missing date_added (0) sorts last — books Goodreads didn't give a
+        // date for shouldn't crowd out the ones we actually know are recent.
+        copy.sort((a, b) => (b.book.date_added_unix || 0) - (a.book.date_added_unix || 0));
         break;
       case 'title_asc':
         copy.sort((a, b) => a.book.title.localeCompare(b.book.title));
@@ -230,21 +286,105 @@
   // Uses appendChild to reorder (moves nodes, doesn't clone) — single reflow.
   function applyView() {
     const books = sortedBooks();
-    let visibleCount = 0;
-    const frag = document.createDocumentFragment();
+    let matched = books.filter(filterBook);
 
+    // A search with zero matches under the active filters, but that DOES
+    // match something elsewhere on the shelf, is worth surfacing rather than
+    // leaving the user staring at an empty grid — fall back to search-only
+    // matching (ignore genre/availability/kindle/gutenberg) for display, and
+    // say so via the notice banner below.
+    let searchExpanded = false;
+    if (searchQuery && matched.length === 0) {
+      const searchOnly = books.filter(bookMatchesSearch);
+      if (searchOnly.length > 0) {
+        matched = searchOnly;
+        searchExpanded = true;
+      }
+    }
+
+    const pageSize = pageSizeValue();
+    const totalPages = pageSize === Infinity ? 1 : Math.max(1, Math.ceil(matched.length / pageSize));
+    if (currentPage > totalPages) currentPage = totalPages;
+    const pageStart = pageSize === Infinity ? 0 : (currentPage - 1) * pageSize;
+    const pageIds = new Set(
+      matched.slice(pageStart, pageStart + pageSize)
+        .map(e => e.book && e.book.goodreads_id)
+    );
+
+    const frag = document.createDocumentFragment();
     for (const event of books) {
       const id = event.book && event.book.goodreads_id;
       const el = id ? bookElements.get(id) : null;
       if (!el) continue;
-      const show = filterBook(event);
-      el.classList.toggle('hidden', !show);
-      if (show) visibleCount++;
+      el.classList.toggle('hidden', !pageIds.has(id));
       frag.appendChild(el);
     }
 
     bookGrid.appendChild(frag);
-    updateCount(visibleCount < allBooks.length ? visibleCount : undefined);
+    updateCount(matched.length < allBooks.length ? matched.length : undefined);
+    updatePagination(matched.length, totalPages, pageSize);
+    updateSearchExpandNotice(searchExpanded, matched.length);
+  }
+
+  function updatePagination(matchedCount, totalPages, pageSize) {
+    if (!paginationBar) return;
+    if (matchedCount <= pageSize) {
+      paginationBar.style.display = 'none';
+      return;
+    }
+    paginationBar.style.display = 'flex';
+    pageIndicator.textContent = `Page ${currentPage} of ${totalPages}`;
+    pagePrevBtn.disabled = currentPage <= 1;
+    pageNextBtn.disabled = currentPage >= totalPages;
+  }
+
+  function updateSearchExpandNotice(expanded, count) {
+    if (!searchExpandNotice) return;
+    if (!expanded) {
+      searchExpandNotice.style.display = 'none';
+      searchExpandNotice.innerHTML = '';
+      return;
+    }
+    searchExpandNotice.style.display = 'block';
+    searchExpandNotice.innerHTML =
+      `No matches for “${escHtml(searchQuery)}” in your current filters — showing ${count} ` +
+      `result${count === 1 ? '' : 's'} from your full shelf instead. ` +
+      `<button type="button" id="clear-filters-for-search" class="link-btn">Clear filters</button>`;
+  }
+
+  if (searchExpandNotice) {
+    searchExpandNotice.addEventListener('click', e => {
+      if (e.target.id !== 'clear-filters-for-search') return;
+      activeFilters.clear();
+      activeGenre = '';
+      saveFilters();
+      storage.set(GENRE_KEY, '');
+      syncFilterUI();
+      syncGenreUI();
+      currentPage = 1;
+      applyView();
+    });
+  }
+
+  function goToPage(page) {
+    currentPage = page;
+    applyView();
+    resultsHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  if (pagePrevBtn) pagePrevBtn.addEventListener('click', () => goToPage(currentPage - 1));
+  if (pageNextBtn) pageNextBtn.addEventListener('click', () => goToPage(currentPage + 1));
+
+  if (searchInput) {
+    let searchDebounce = null;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        searchQuery = searchInput.value.trim().toLowerCase();
+        currentPage = 1;
+        applyView();
+      }, 150);
+    });
   }
 
   function updateCount(visibleCount) {
@@ -289,6 +429,7 @@
       }
       saveFilters();
       syncFilterUI();
+      currentPage = 1;
       applyView();
     });
   });
@@ -304,6 +445,7 @@
       activeGenre = btn.dataset.genre === 'all' ? '' : btn.dataset.genre;
       storage.set(GENRE_KEY, activeGenre);
       syncGenreUI();
+      currentPage = 1;
       applyView();
     });
   });
@@ -320,6 +462,7 @@
     activeSort = sortSelect.value;
     storage.set(SORT_KEY, activeSort);
     syncSortUI();
+    currentPage = 1;
     applyView();
   });
 
@@ -330,6 +473,7 @@
       activeSort = 'random';
       randomKeys.clear();
       syncSortUI();
+      currentPage = 1;
       applyView();
     });
   }
@@ -400,6 +544,7 @@
     setProgress(100, `Showing saved results from ${ageStr} — click Refresh to update`);
     setTimeout(() => { document.getElementById('status-area').style.opacity = '0.4'; }, 3000);
     document.getElementById('recs-trigger').style.display = 'block';
+    if (kindleReportTrigger) kindleReportTrigger.style.display = 'block';
     return true;
   }
 
@@ -441,6 +586,16 @@
   syncFilterUI();
   syncGenreUI();
   syncSortUI();
+  if (pageSizeSelect) pageSizeSelect.value = pageSizeSetting;
+
+  if (pageSizeSelect) {
+    pageSizeSelect.addEventListener('change', () => {
+      pageSizeSetting = pageSizeSelect.value;
+      storage.set(PAGE_SIZE_KEY, pageSizeSetting);
+      currentPage = 1;
+      applyView();
+    });
+  }
 
   let activeES = null;
   let streamDone = false;
@@ -467,6 +622,11 @@
     bookElements.clear();
     totalBooks = 0;
     completedBooks = 0;
+    currentPage = 1;
+    searchQuery = '';
+    if (searchInput) searchInput.value = '';
+    if (paginationBar) paginationBar.style.display = 'none';
+    if (searchExpandNotice) { searchExpandNotice.style.display = 'none'; searchExpandNotice.innerHTML = ''; }
     bookGrid.innerHTML = '';
     errorBanner.classList.remove('visible');
     resultsHeader.style.display = 'none';
@@ -480,6 +640,9 @@
     document.getElementById('recs-panel').style.display = 'none';
     document.getElementById('recs-grid').innerHTML = '';
     document.getElementById('recs-loading').style.display = 'none';
+    if (kindleReportTrigger) kindleReportTrigger.style.display = 'none';
+    if (kindleReportPanel) kindleReportPanel.style.display = 'none';
+    if (kindleReportGrid) kindleReportGrid.innerHTML = '';
     if (recsES) { recsES.close(); recsES = null; }
     const recsBtn = document.getElementById('recs-btn');
     if (recsBtn) { recsBtn.disabled = false; recsBtn.textContent = RECS_BTN_IDLE; }
@@ -565,6 +728,7 @@
       applyView();
       window.scrollTo({ top: 0, behavior: 'smooth' });
       document.getElementById('recs-trigger').style.display = 'block';
+      if (kindleReportTrigger) kindleReportTrigger.style.display = 'block';
       createShortlink();
     });
 
@@ -594,6 +758,7 @@
         applyView();
         window.scrollTo({ top: 0, behavior: 'smooth' });
         document.getElementById('recs-trigger').style.display = 'block';
+        if (kindleReportTrigger) kindleReportTrigger.style.display = 'block';
         createShortlink();
       }
       setTimeout(() => {
@@ -682,6 +847,39 @@
     recsGrid.style.display = expanded ? 'none' : '';
   });
 
+  // ---- Kindle gaps report ----
+  // Client-side only: no new data is needed, library_results.has_kindle is
+  // already on every book event. "Never available on Kindle" means found in
+  // at least one library's catalog (status !== 'not_found') but none of those
+  // findings carry a Kindle format.
+
+  if (kindleReportBtn) {
+    kindleReportBtn.addEventListener('click', () => {
+      const gaps = allBooks.filter(event => neverKindle(event.library_results));
+
+      kindleReportGrid.innerHTML = gaps.length
+        ? gaps.map(event => buildBookCard(event, true)).join('')
+        : '<p style="color:var(--text-muted);font-size:.875rem;padding:8px 0;">No gaps found — every book your libraries carry also offers a Kindle format.</p>';
+      kindleReportSubtitle.textContent = gaps.length
+        ? `${gaps.length} of ${allBooks.length} book${gaps.length === 1 ? '' : 's'} your libraries carry (or have on hold) never offer a Kindle format.`
+        : 'Books your libraries carry (or have on hold) but never offer as a Kindle format.';
+
+      kindleReportPanel.style.display = 'block';
+      kindleReportPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      kindleReportPanel.classList.add('recs-panel--highlight');
+      setTimeout(() => kindleReportPanel.classList.remove('recs-panel--highlight'), 1400);
+    });
+  }
+
+  if (kindleReportToggle) {
+    kindleReportToggle.addEventListener('click', () => {
+      const expanded = kindleReportToggle.getAttribute('aria-expanded') === 'true';
+      kindleReportToggle.setAttribute('aria-expanded', String(!expanded));
+      kindleReportToggle.textContent = expanded ? 'Show' : 'Hide';
+      kindleReportGrid.style.display = expanded ? 'none' : '';
+    });
+  }
+
   // ---- Recommendations ----
 
   // Recs render as ordinary book cards (same component as search results) —
@@ -703,10 +901,9 @@
     const loading = document.getElementById('recs-loading');
 
     recsPanel.style.display = 'block';
-    // Jump the user to the section immediately — otherwise there's no
-    // indication anything happened until books start streaming in below
-    // the (possibly long) main results grid.
-    recsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Flash the panel so it's clear something happened, without forcing a
+    // scroll — the user clicked from wherever they were in the grid and
+    // shouldn't be yanked away from it.
     recsPanel.classList.add('recs-panel--highlight');
     setTimeout(() => recsPanel.classList.remove('recs-panel--highlight'), 1400);
 
@@ -715,7 +912,10 @@
     btn.disabled = true;
     btn.textContent = 'Finding books for you…';
     loading.style.display = 'flex';
-    recsGrid.innerHTML = '';
+    // Skeleton cards while the engine works, matching the main results
+    // loading state instead of leaving a bare grid under the spinner.
+    recsGrid.innerHTML = Array.from({length: 4}, buildSkeletonCard).join('');
+    let recsSkeletonsCleared = false;
 
     let recsFound = 0;
     const p = new URLSearchParams(baseParams);
@@ -731,6 +931,10 @@
     es.addEventListener('rec', e => {
       const rec = JSON.parse(e.data);
       recsFound++;
+      if (!recsSkeletonsCleared) {
+        recsSkeletonsCleared = true;
+        recsGrid.querySelectorAll('.book-card-skeleton').forEach(el => el.remove());
+      }
       recsGrid.insertAdjacentHTML('beforeend', buildRecCard(rec));
     });
 
@@ -805,7 +1009,7 @@
     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
     if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
-      sortSelect.focus();
+      if (searchInput) searchInput.focus(); else sortSelect.focus();
     }
     if (e.key === '1') filterBtns[0] && filterBtns[0].click();
     if (e.key === '2') filterBtns[1] && filterBtns[1].click();
