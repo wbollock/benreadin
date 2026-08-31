@@ -238,6 +238,9 @@ func (s *OverDriveService) checkUncached(ctx context.Context, book models.Book, 
 
 		result.HasKindle = item.hasKindle()
 		result.Genre = classifyGenre(item.Subjects)
+		if item.Description != "" {
+			result.Description = truncate(stripHTML(item.Description), 300)
+		}
 	}
 
 	if err := s.cache.SetLibrary(libraryKey, query, result); err != nil {

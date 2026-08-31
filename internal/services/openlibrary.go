@@ -19,6 +19,7 @@ const (
 	openLibraryISBN   = "https://openlibrary.org/isbn/%s.json"
 	openLibrarySearch = "https://openlibrary.org/search.json"
 	openLibraryCover  = "https://covers.openlibrary.org/b/isbn/%s-L.jpg"
+	openLibraryWork   = "https://openlibrary.org%s.json" // %s = work key, e.g. "/works/OL123W"
 
 	// Open Library allows up to ~6 req/sec with a User-Agent set.
 	olConcurrency = 6
@@ -42,10 +43,40 @@ type olISBNResponse struct {
 	ISBN10        []string `json:"isbn_10"`
 	Covers        []int    `json:"covers"`
 	NumberOfPages int      `json:"number_of_pages"`
+	Works         []struct {
+		Key string `json:"key"`
+	} `json:"works"`
+}
+
+// olText handles Open Library's inconsistent "description" shape: a plain
+// string on some records, {"type": "/type/text", "value": "..."} on others.
+type olText struct {
+	Value string
+}
+
+func (t *olText) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		t.Value = s
+		return nil
+	}
+	var obj struct {
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	t.Value = obj.Value
+	return nil
+}
+
+type olWorkResponse struct {
+	Description olText `json:"description"`
 }
 
 type olSearchResponse struct {
 	Docs []struct {
+		Key                 string   `json:"key"` // work key, e.g. "/works/OL123W"
 		ISBN                []string `json:"isbn"`
 		NumberOfPagesMedian int      `json:"number_of_pages_median"`
 	} `json:"docs"`
@@ -148,7 +179,42 @@ func (s *OpenLibraryService) lookupByISBN(ctx context.Context, b *models.Book, i
 		b.CoverURL = fmt.Sprintf(openLibraryCover, coverISBN)
 	}
 
+	// Last-resort description source: editions rarely carry one, but the
+	// work they belong to almost always does. Only fires for the minority of
+	// books Goodreads (no review) and OverDrive (no catalog match) both missed.
+	if b.Description == "" && len(ol.Works) > 0 && ol.Works[0].Key != "" {
+		if desc := s.fetchWorkDescription(ctx, ol.Works[0].Key); desc != "" {
+			b.Description = truncate(stripHTML(desc), 300)
+		}
+	}
+
 	return nil
+}
+
+// fetchWorkDescription fetches the synopsis for an Open Library work. Best
+// effort — errors are swallowed since this only backfills an optional field.
+func (s *OpenLibraryService) fetchWorkDescription(ctx context.Context, workKey string) string {
+	endpoint := fmt.Sprintf(openLibraryWork, workKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "benreadin/1.0 (+https://github.com/wbollock/benreadin)")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	var work olWorkResponse
+	if err := json.NewDecoder(resp.Body).Decode(&work); err != nil {
+		return ""
+	}
+	return work.Description.Value
 }
 
 type olRatingResponse struct {
@@ -214,7 +280,7 @@ func (s *OpenLibraryService) lookupBySearch(ctx context.Context, b *models.Book)
 	q.Set("title", b.SearchTitle())
 	q.Set("author", b.Author)
 	q.Set("limit", "1")
-	q.Set("fields", "isbn,number_of_pages_median")
+	q.Set("fields", "key,isbn,number_of_pages_median")
 	req.URL.RawQuery = q.Encode()
 	req.Header.Set("User-Agent", "benreadin/1.0 (+https://github.com/wbollock/benreadin)")
 
@@ -229,11 +295,12 @@ func (s *OpenLibraryService) lookupBySearch(ctx context.Context, b *models.Book)
 		return err
 	}
 
-	if len(ol.Docs) == 0 || len(ol.Docs[0].ISBN) == 0 {
+	if len(ol.Docs) == 0 {
 		return nil
 	}
+	doc := ol.Docs[0]
 
-	for _, isbn := range ol.Docs[0].ISBN {
+	for _, isbn := range doc.ISBN {
 		if len(isbn) == 13 && b.ISBN13 == "" {
 			b.ISBN13 = isbn
 		}
@@ -241,12 +308,20 @@ func (s *OpenLibraryService) lookupBySearch(ctx context.Context, b *models.Book)
 			b.ISBN10 = isbn
 		}
 	}
-	if ol.Docs[0].NumberOfPagesMedian > 0 && b.PageCount == 0 {
-		b.PageCount = ol.Docs[0].NumberOfPagesMedian
+	if doc.NumberOfPagesMedian > 0 && b.PageCount == 0 {
+		b.PageCount = doc.NumberOfPagesMedian
 	}
 
 	if b.CoverURL == "" && b.ISBN13 != "" {
 		b.CoverURL = fmt.Sprintf(openLibraryCover, b.ISBN13)
+	}
+
+	// Last-resort description source — see the identical comment in
+	// lookupByISBN. Reached here for books with no ISBN at all.
+	if b.Description == "" && doc.Key != "" {
+		if desc := s.fetchWorkDescription(ctx, doc.Key); desc != "" {
+			b.Description = truncate(stripHTML(desc), 300)
+		}
 	}
 
 	return nil

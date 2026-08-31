@@ -252,6 +252,9 @@ func (p *PrewarmService) prewarmBook(ctx context.Context, book models.Book, libr
 	libWg.Wait()
 
 	enriched.Genre = models.GenreFromResults(libResults)
+	if enriched.Description == "" {
+		enriched.Description = models.DescriptionFromResults(libResults)
+	}
 
 	var azResult models.AmazonResult
 	if err := p.azSem.Acquire(bookCtx, 1); err == nil {

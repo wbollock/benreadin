@@ -352,6 +352,12 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 			libWg.Wait()
 
 			book.Genre = models.GenreFromResults(libResults)
+			// Goodreads only supplies Description when the user wrote a
+			// review of the book — rare, especially on a to-read shelf.
+			// Fall back to the OverDrive catalog blurb so most books get one.
+			if book.Description == "" {
+				book.Description = models.DescriptionFromResults(libResults)
+			}
 
 			gbResult := h.gutenberg.Lookup(book.SearchTitle(), book.Author)
 

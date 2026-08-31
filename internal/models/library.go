@@ -27,6 +27,14 @@ type LibraryResult struct {
 	// separately) because it comes free with the availability check; rolled up
 	// onto Book.Genre via GenreFromResults rather than exposed per-library.
 	Genre string `json:"-"`
+
+	// Description is the OverDrive catalog entry's publisher blurb (plain
+	// text, HTML stripped) for the title that matched. Carried here for the
+	// same reason as Genre — comes free with the availability check; rolled
+	// up onto Book.Description via DescriptionFromResults when Goodreads
+	// didn't supply one (Goodreads only has text when the user wrote a
+	// review, which to-read books rarely have).
+	Description string `json:"-"`
 }
 
 // GenreFromResults returns the first non-empty Genre reported across a book's
@@ -36,6 +44,17 @@ func GenreFromResults(results []LibraryResult) string {
 	for _, r := range results {
 		if r.Genre != "" {
 			return r.Genre
+		}
+	}
+	return ""
+}
+
+// DescriptionFromResults returns the first non-empty Description reported
+// across a book's per-library results. Empty if none did.
+func DescriptionFromResults(results []LibraryResult) string {
+	for _, r := range results {
+		if r.Description != "" {
+			return r.Description
 		}
 	}
 	return ""

@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -25,6 +26,13 @@ import (
 var (
 	reHTMLTag    = regexp.MustCompile(`<[^>]+>`)
 	reWhitespace = regexp.MustCompile(`\s+`)
+	// reBlockTag matches line-break-ish tags — these should leave a space
+	// behind when stripped. Everything else (b, i, em, strong, span, a, ...)
+	// should collapse to nothing: publisher blurb HTML routinely splits a
+	// single word across adjacent inline tags (e.g. "alliance i</b><b>n
+	// <i>Semiosis</i>"), and replacing every tag with a space turns that into
+	// "i n Semiosis" instead of "in Semiosis".
+	reBlockTag = regexp.MustCompile(`(?i)</?\s*(?:br|p|div|li|ul|ol|h[1-6]|tr|td|blockquote)[^>]*>`)
 )
 
 const goodreadsRSSBase = "https://www.goodreads.com/review/list_rss/%s"
@@ -82,6 +90,7 @@ type grItem struct {
 	Description       string `xml:"description"`
 	AverageRating     string `xml:"average_rating"`
 	UserRating        string `xml:"user_rating"`
+	UserDateAdded     string `xml:"user_date_added"`
 }
 
 // FetchShelf returns all books on a Goodreads shelf. Results are cached
@@ -253,17 +262,16 @@ func buildFeedURL(userID, shelf string, page int) string {
 	return fmt.Sprintf("%s?shelf=%s&per_page=200&page=%d", u, url.QueryEscape(shelf), page)
 }
 
-// stripHTML removes HTML tags and collapses whitespace, returning plain text.
+// stripHTML removes HTML tags, decodes HTML entities (named — &bull;,
+// &mdash;, &nbsp;, ... — and numeric — &#160;, &#x2022;, ...), and collapses
+// whitespace, returning plain text.
 func stripHTML(s string) string {
-	s = reHTMLTag.ReplaceAllString(s, " ")
-	s = strings.NewReplacer(
-		"&amp;", "&",
-		"&lt;", "<",
-		"&gt;", ">",
-		"&quot;", `"`,
-		"&#39;", "'",
-		"&nbsp;", " ",
-	).Replace(s)
+	s = reBlockTag.ReplaceAllString(s, " ")
+	s = reHTMLTag.ReplaceAllString(s, "")
+	s = html.UnescapeString(s)
+	// \s in Go's RE2 regexp is ASCII-only, so a decoded &nbsp; (U+00A0)
+	// survives collapsing unless normalized to a regular space first.
+	s = strings.ReplaceAll(s, " ", " ")
 	return strings.TrimSpace(reWhitespace.ReplaceAllString(s, " "))
 }
 
@@ -337,6 +345,11 @@ func itemToBook(item grItem) models.Book {
 	}
 	if v, err := strconv.Atoi(strings.TrimSpace(item.UserRating)); err == nil {
 		b.UserRating = v
+	}
+
+	// Goodreads emits this as RFC1123Z, e.g. "Tue, 24 Aug 2021 10:15:00 -0700".
+	if t, err := time.Parse(time.RFC1123Z, strings.TrimSpace(item.UserDateAdded)); err == nil {
+		b.DateAddedUnix = t.Unix()
 	}
 
 	return b

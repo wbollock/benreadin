@@ -28,6 +28,12 @@ type Book struct {
 	// OverDrive catalog subject tags once availability is checked (see
 	// LibraryResult.Genre / GenreFromResults). Empty when unclassified.
 	Genre string `json:"genre,omitempty"` // "fiction" | "nonfiction" | ""
+
+	// DateAddedUnix is when the book was added to this Goodreads shelf (from
+	// the RSS <user_date_added> field), as a Unix timestamp so the JSON
+	// omitempty check works cleanly (unlike the zero value of time.Time).
+	// Zero when Goodreads didn't supply it.
+	DateAddedUnix int64 `json:"date_added_unix,omitempty"`
 }
 
 // Goodreads appends series info as a trailing parenthetical containing "#",
