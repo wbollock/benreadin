@@ -162,9 +162,13 @@ func (g *GutenbergService) Lookup(title, author string) *models.GutenbergResult 
 	normTitle := normalizeTitle(title)
 	normAuthor := normalizeAuthor(author)
 
-	// Try exact normalized title match first.
+	// Try exact normalized title match first. Still requires the author to
+	// match (loosely, by last name) — a shared exact title is common for
+	// unrelated books (a modern biography and a public-domain one both named
+	// "Alexander Hamilton"), and without this check the exact-match branch
+	// would confidently link the wrong, unrelated Gutenberg text.
 	rows, err := g.db.Query(
-		`SELECT id, epub_url FROM gutenberg_books
+		`SELECT id, author, epub_url FROM gutenberg_books
 		 WHERE id > 0 AND LOWER(title) = ? LIMIT 5`,
 		strings.ToLower(normTitle),
 	)
@@ -172,13 +176,13 @@ func (g *GutenbergService) Lookup(title, author string) *models.GutenbergResult 
 		defer rows.Close()
 		for rows.Next() {
 			var id int
-			var epubURL string
-			if err := rows.Scan(&id, &epubURL); err != nil {
+			var gAuthor, epubURL string
+			if err := rows.Scan(&id, &gAuthor, &epubURL); err != nil {
 				continue
 			}
-			// Accept any author on exact title match — Gutenberg sometimes lists
-			// different editions with slightly different author strings.
-			return &models.GutenbergResult{ID: id, EPUBURL: epubURL}
+			if authorsMatch(normAuthor, gAuthor) {
+				return &models.GutenbergResult{ID: id, EPUBURL: epubURL}
+			}
 		}
 	}
 
