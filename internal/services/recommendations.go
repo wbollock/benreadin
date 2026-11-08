@@ -312,7 +312,7 @@ func (s *RecommendationService) resolveSeriesEntry(
 	metrics.RecsGeneratedTotal.WithLabelValues("series").Inc()
 	rec := s.enrich(ctx, cand)
 	rec.Source = "series"
-	rec.BecauseSeries = fmt.Sprintf("Next in %s — you finished #%d", sp.Name, sp.MaxRead)
+	rec.BecauseSeries = fmt.Sprintf("Next in %s. You read #%d.", sp.Name, sp.MaxRead)
 	onRec(rec)
 }
 
@@ -372,7 +372,7 @@ func (s *RecommendationService) runAuthorStage(
 			metrics.RecsGeneratedTotal.WithLabelValues("author").Inc()
 			rec := s.enrich(ctx, cand)
 			rec.Source = "author"
-			rec.BecauseAuthor = fmt.Sprintf("You finished %d book%s by %s", authors[i].Finished, plural(authors[i].Finished), authors[i].Name)
+			rec.BecauseAuthor = fmt.Sprintf("You read %d book%s by %s", authors[i].Finished, plural(authors[i].Finished), authors[i].Name)
 			onRec(rec)
 			emittedAny = true
 		}

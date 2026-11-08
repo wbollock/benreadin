@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>benreadin — results</title>
-  <meta property="og:title" content="benreadin — shelf availability results">
+  <title>benreadin: your results</title>
+  <meta property="og:title" content="benreadin: what you can borrow from your list">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -39,15 +39,15 @@
         <a href="/">benreadin</a>
       </div>
       <div style="display:flex;gap:7px;margin-left:auto;align-items:center;">
-        <button id="theme-toggle" class="btn-theme" title="Toggle dark/light mode" aria-label="Toggle dark mode">
+        <button id="theme-toggle" class="btn-theme" title="Switch between light and dark" aria-label="Switch between light and dark">
           <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         </button>
-        <button id="copy-link-btn" class="btn-copy-link" style="display:none;" title="Copy shareable link">
+        <button id="copy-link-btn" class="btn-copy-link" style="display:none;" title="Copy a link to these results">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           <span class="btn-text">Copy link</span>
         </button>
-        <button id="refresh-btn" class="btn-secondary" title="Refresh availability — clears cache and re-fetches">
+        <button id="refresh-btn" class="btn-secondary" title="Check everything again">
           <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           <span class="btn-text">Refresh</span>
         </button>
@@ -81,10 +81,10 @@
           <h2>Results <span class="results-count" id="results-count"></span></h2>
           <div class="results-header-actions">
             <div id="kindle-report-trigger" style="display:none;">
-              <button id="kindle-report-btn" class="btn-secondary btn-sm" type="button">Missing on Kindle list</button>
+              <button id="kindle-report-btn" class="btn-secondary btn-sm" type="button">Not on Kindle</button>
             </div>
             <div id="recs-trigger" style="display:none;">
-              <button id="recs-btn" class="btn-recs">Recommend me more books ↓</button>
+              <button id="recs-btn" class="btn-recs">Suggest more books ↓</button>
             </div>
           </div>
         </div>
@@ -94,9 +94,9 @@
           <span class="legend-label">Key</span>
           <span class="legend-item"><span class="badge badge-available">Available</span><span class="legend-desc">borrow now</span></span>
           <span class="legend-item"><span class="badge badge-wait">N-day wait</span><span class="legend-desc">place a hold</span></span>
-          <span class="legend-item"><span class="badge badge-notfound">Not found</span><span class="legend-desc">not on Libby</span></span>
-          <span class="legend-item"><span class="badge-kindle-pill">K</span><span class="legend-desc">Kindle delivery</span></span>
-          <span class="legend-item"><span class="badge" style="background:var(--green-bg);color:var(--green);">Gutenberg</span><span class="legend-desc">free EPUB</span></span>
+          <span class="legend-item"><span class="badge badge-notfound">Not found</span><span class="legend-desc">not at your library</span></span>
+          <span class="legend-item"><span class="badge-kindle-pill">K</span><span class="legend-desc">can send to Kindle</span></span>
+          <span class="legend-item"><span class="badge" style="background:var(--green-bg);color:var(--green);">Gutenberg</span><span class="legend-desc">free ebook</span></span>
         </div>
 
         <div class="filter-bar">
@@ -112,10 +112,10 @@
               <button class="filter-chip active" data-filter="all">All</button>
               <button class="filter-chip" data-filter="available">Available now</button>
               <button class="filter-chip" data-filter="wait">On hold</button>
-              <button class="filter-chip" data-filter="not_found">Not on Libby</button>
-              <button class="filter-chip filter-chip-soon" data-filter="ready_soon" title="On hold with 3 days or less estimated wait">Ready soon</button>
+              <button class="filter-chip" data-filter="not_found">Not at library</button>
+              <button class="filter-chip filter-chip-soon" data-filter="ready_soon" title="On hold, about 3 days or less to wait">Ready soon</button>
               <button class="filter-chip filter-chip-kindle" data-filter="kindle">Kindle</button>
-              <button class="filter-chip filter-chip-gutenberg" data-filter="gutenberg">Free (Gutenberg)</button>
+              <button class="filter-chip filter-chip-gutenberg" data-filter="gutenberg">Free</button>
             </div>
           </div>
           <!-- Genre filter -->
@@ -135,11 +135,11 @@
               <option value="wait_asc">Shortest wait</option>
               <option value="rating_desc">Highest rated</option>
               <option value="added_desc">Recently added</option>
-              <option value="default">Shelf order</option>
+              <option value="default">List order</option>
               <option value="title_asc">Title A→Z</option>
               <option value="title_desc">Title Z→A</option>
             </select>
-            <button class="filter-chip" id="shuffle-btn" type="button" title="Random order — click again to reshuffle">Shuffle</button>
+            <button class="filter-chip" id="shuffle-btn" type="button" title="Random order. Click again to mix again.">Shuffle</button>
           </div>
           <!-- Page size -->
           <div class="filter-group">
@@ -172,7 +172,7 @@
           <h2 class="recs-title">Borrow this next</h2>
           <button class="recs-toggle" id="recs-toggle" aria-expanded="true">Hide</button>
         </div>
-        <p class="recs-subtitle">Available now with Kindle delivery — next books in series you're reading, and more from authors you've finished.</p>
+        <p class="recs-subtitle">You can borrow these now and send them to Kindle. They're the next books in series you've read, and more by authors you've read.</p>
         <div id="recs-loading" class="recs-loading" style="display:none;">
           <span class="recs-spinner"></span> <span id="recs-loading-label">Finding books for you…</span>
         </div>
@@ -183,10 +183,10 @@
            never carry a Kindle format at any checked library. -->
       <div id="kindle-report-panel" class="recs-panel" style="display:none;">
         <div class="recs-header">
-          <h2 class="recs-title">Missing on Kindle list</h2>
+          <h2 class="recs-title">Not on Kindle</h2>
           <button class="recs-toggle" id="kindle-report-toggle" aria-expanded="true">Hide</button>
         </div>
-        <p class="recs-subtitle" id="kindle-report-subtitle">Books your libraries carry (or have on hold) but never offer as a Kindle format.</p>
+        <p class="recs-subtitle" id="kindle-report-subtitle">Your libraries have these books, but not in a Kindle version.</p>
         <div class="recs-grid book-grid" id="kindle-report-grid"></div>
       </div>
 
@@ -195,9 +195,9 @@
 
   <footer class="site-footer">
     <div class="container">
-      <p>benreadin is not affiliated with Hardcover, Goodreads, Libby, OverDrive, or Amazon. Borrow data is live from OverDrive. As an Amazon Associate, benreadin may earn from qualifying purchases.</p>
+      <p>benreadin isn't connected to Hardcover, Goodreads, Libby, OverDrive or Amazon. Library info comes live from OverDrive. As an Amazon Associate, benreadin may earn from qualifying purchases.</p>
       <div class="footer-reset">
-        <button type="button" id="reset-data-btn" title="Clear this site's saved data if the page is misbehaving">Reset saved data</button>
+        <button type="button" id="reset-data-btn" title="Clear what this site saved in your browser, if something looks broken">Reset saved data</button>
       </div>
     </div>
   </footer>
@@ -209,7 +209,7 @@
       var b = document.getElementById('reset-data-btn');
       if (!b) return;
       b.addEventListener('click', function () {
-        if (!confirm('Clear saved settings (library names, sort, cached results) and reload?')) return;
+        if (!confirm('Clear your saved settings (library names, sort, saved results) and reload the page?')) return;
         try { localStorage.clear(); } catch (e) { /* storage blocked */ }
         try { sessionStorage.clear(); } catch (e) { /* storage blocked */ }
         location.reload();

@@ -128,7 +128,7 @@
       const open = urlFinder.hidden;
       urlFinder.hidden = !open;
       urlFinderToggle.setAttribute('aria-expanded', String(open));
-      urlFinderToggle.textContent = open ? 'hide' : "don't know your username?";
+      urlFinderToggle.textContent = open ? 'Hide' : 'Where do I find it?';
     });
   }
 
@@ -286,7 +286,7 @@
       });
       modal.addEventListener('click', e => { if (e.target === modal) closeRenameModal(); });
     }
-    document.getElementById('rename-hint').textContent = `Key: ${key}`;
+    document.getElementById('rename-hint').textContent = `Code: ${key}`;
     const input = document.getElementById('rename-input');
     input.value = current;
     modal.style.display = 'flex';
@@ -415,7 +415,7 @@
     clearError();
 
     const url = normalizeInput(urlInput.value);
-    if (!url || url === '@') { showError('Enter your Hardcover username, e.g. @you or hardcover.app/@you.'); return; }
+    if (!url || url === '@') { showError('Enter your Hardcover username, like @yourname.'); return; }
     urlInput.value = url;
     if (libraries.length === 0) { showError('Add at least one library to check.'); return; }
 

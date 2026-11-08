@@ -71,19 +71,19 @@ type HardcoverError struct {
 func (e *HardcoverError) Error() string {
 	switch e.Kind {
 	case "not_found":
-		return "Hardcover couldn't find that user. Double-check the username (hardcover.app/@username)."
+		return "Couldn't find that Hardcover user. Check the spelling."
 	case "auth":
-		return "benreadin's Hardcover API token was rejected — it may have expired. The site owner needs to refresh it."
+		return "benreadin can't connect to Hardcover right now. The site owner needs to fix it."
 	case "rate_limited":
-		return "Hardcover is rate-limiting requests right now — wait a minute and try again."
+		return "Hardcover is busy. Wait a minute and try again."
 	case "unavailable":
-		return "Hardcover is having trouble right now — try again in a few minutes."
+		return "Hardcover is having problems. Try again in a few minutes."
 	case "bad_shelf":
-		return "Hardcover only has the built-in shelves: to-read, currently-reading, read, did-not-finish."
+		return "Hardcover only has these lists: Want to Read, Currently Reading, Read, Did Not Finish."
 	case "unconfigured":
-		return "Hardcover support isn't configured on this server (no API token)."
+		return "This site isn't set up to use Hardcover yet."
 	default:
-		return "Hardcover returned an unexpected error — try again in a bit."
+		return "Something went wrong talking to Hardcover. Try again soon."
 	}
 }
 

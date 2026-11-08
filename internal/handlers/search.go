@@ -175,7 +175,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	libraries := r.URL.Query()["libraries"]
 
 	if rawURL == "" {
-		sendEvent("error", map[string]string{"message": "url parameter is required"})
+		sendEvent("error", map[string]string{"message": "Enter your Hardcover username."})
 		return
 	}
 
@@ -197,7 +197,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		libraries = parsed.Libraries
 	}
 	if len(libraries) == 0 {
-		sendEvent("error", map[string]string{"message": "at least one library key is required"})
+		sendEvent("error", map[string]string{"message": "Add at least one library."})
 		return
 	}
 
@@ -205,7 +205,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	if services.IsHardcoverUser(parsed.UserID) {
 		sourceName = "Hardcover"
 	}
-	sendEvent("progress", ProgressEvent{Message: fmt.Sprintf("Fetching your %s shelf...", sourceName)})
+	sendEvent("progress", ProgressEvent{Message: fmt.Sprintf("Getting your books from %s…", sourceName)})
 
 	shelfCtx, shelfSpan := tracer.Start(ctx, "shelf.fetch")
 	shelfSpan.SetAttributes(
@@ -249,7 +249,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 	sendEvent("progress", ProgressEvent{
 		Total:   len(books),
-		Message: fmt.Sprintf("Found %d books — checking availability...", len(books)),
+		Message: fmt.Sprintf("Found %d books. Checking your libraries…", len(books)),
 	})
 
 	// Heartbeat: keeps the SSE connection alive through proxies that close idle connections.
@@ -476,7 +476,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	if len(toFetch) > 0 && ctx.Err() == nil {
 		sendEvent("availability_done", map[string]interface{}{
 			"total":   len(books),
-			"message": fmt.Sprintf("Checked %d books — filling in details…", len(books)),
+			"message": fmt.Sprintf("Checked %d books. Adding prices and details…", len(books)),
 		})
 	}
 
@@ -491,7 +491,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	outcome = "ok"
 	sendEvent("done", map[string]interface{}{
 		"total":   len(books),
-		"message": fmt.Sprintf("Done — checked %d books", len(books)),
+		"message": fmt.Sprintf("Done. Checked %d books.", len(books)),
 	})
 }
 
@@ -509,7 +509,7 @@ func plural(singular, pluralForm string, n int) string {
 // emptyShelfMessage explains a zero-book result for the shelf's source.
 func emptyShelfMessage(userID string) string {
 	if services.IsHardcoverUser(userID) {
-		return "No books found — the shelf may be empty, or the Hardcover library may be private (Hardcover → Settings → Privacy)."
+		return "No books found. The list may be empty, or your Hardcover library may be private (Hardcover → Settings → Privacy)."
 	}
-	return "No books found — the shelf may be empty, or the Goodreads profile may be private (Settings → Privacy)."
+	return "No books found. The shelf may be empty, or the Goodreads profile may be private."
 }

@@ -31,7 +31,7 @@ func ParseShelfURL(raw string) (*ParsedShelfURL, error) {
 	if strings.HasPrefix(raw, "@") {
 		user := raw[1:]
 		if !validHardcoverUsername(user) {
-			return nil, fmt.Errorf("invalid Hardcover username %q", raw)
+			return nil, fmt.Errorf("%q isn't a valid Hardcover username", raw)
 		}
 		return &ParsedShelfURL{UserID: "@" + strings.ToLower(user), Shelf: "to-read"}, nil
 	}
@@ -61,7 +61,7 @@ func ParseShelfURL(raw string) (*ParsedShelfURL, error) {
 	case "hardcover.app", "www.hardcover.app":
 		return parseHardcoverURL(u)
 	default:
-		return nil, fmt.Errorf("unsupported URL host %q — paste a Hardcover profile URL (hardcover.app/@you) or Goodreads/OverReader URL", u.Host)
+		return nil, fmt.Errorf("benreadin doesn't know links from %q. Enter your Hardcover username, like @yourname", u.Host)
 	}
 }
 
@@ -146,7 +146,7 @@ func parseGoodreadsURL(u *url.URL) (*ParsedShelfURL, error) {
 
 	// Shelf URL: /review/list/{USER_ID}?shelf={SHELF}
 	if len(parts) < 3 || parts[0] != "review" || parts[1] != "list" {
-		return nil, fmt.Errorf("unrecognised Goodreads URL — paste your profile URL (goodreads.com/user/show/…) or shelf URL (goodreads.com/review/list/…)")
+		return nil, fmt.Errorf("that doesn't look like a Goodreads profile or shelf link")
 	}
 
 	shelf := u.Query().Get("shelf")
@@ -168,13 +168,13 @@ func parseGoodreadsURL(u *url.URL) (*ParsedShelfURL, error) {
 func parseHardcoverURL(u *url.URL) (*ParsedShelfURL, error) {
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	if len(parts) == 0 || !strings.HasPrefix(parts[0], "@") || !validHardcoverUsername(parts[0][1:]) {
-		return nil, fmt.Errorf("unrecognised Hardcover URL — paste your profile URL, e.g. hardcover.app/@you")
+		return nil, fmt.Errorf("that doesn't look like a Hardcover profile link. Try hardcover.app/@yourname")
 	}
 	shelf := "to-read"
 	if len(parts) >= 3 && parts[1] == "books" && parts[2] != "" {
 		shelf = HardcoverShelfName(parts[2])
 		if _, ok := hardcoverStatusIDs[shelf]; !ok {
-			return nil, fmt.Errorf("unsupported Hardcover shelf %q — use want-to-read, currently-reading, read, or did-not-finish", parts[2])
+			return nil, fmt.Errorf("Hardcover doesn't have a %q list. Use want-to-read, currently-reading, read or did-not-finish", parts[2])
 		}
 	}
 	return &ParsedShelfURL{UserID: "@" + strings.ToLower(parts[0][1:]), Shelf: shelf}, nil

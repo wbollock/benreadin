@@ -53,17 +53,17 @@ function relativeAdded(unixSeconds) {
 const AMAZON_AFFILIATE_TAG = 'benreadin-20';
 
 function availabilityBadge(result) {
-  const kindle = result.has_kindle ? ' <span class="badge-kindle-pill" title="Kindle delivery available">K</span>' : '';
+  const kindle = result.has_kindle ? ' <span class="badge-kindle-pill" title="Can send to Kindle">K</span>' : '';
   switch (result.status) {
     case 'available':
       return `<span class="badge badge-available">Available${result.available_copies > 0 ? ` (${result.available_copies})` : ''}${kindle}</span>`;
     case 'wait':
       return `<span class="badge badge-wait">${result.estimated_wait_days > 0 ? result.estimated_wait_days + '-day wait' : 'On hold'}${kindle}</span>`;
     case 'unavailable':
-      return `<span class="badge badge-unavail">Not in catalog</span>`;
+      return `<span class="badge badge-unavail">No copies</span>`;
     default:
       if (result.check_failed) {
-        return `<span class="badge badge-notfound" title="Libby didn't respond in time — use Refresh to try again">Couldn't check</span>`;
+        return `<span class="badge badge-notfound" title="Libby didn't answer in time. Press Refresh to try again.">Couldn't check</span>`;
       }
       return `<span class="badge badge-notfound">Not found</span>`;
   }
@@ -81,7 +81,7 @@ function buildBookCard(event, show, extra) {
     <div class="library-row">
       <span class="lib-label" data-libkey="${escHtml(lr.library_key)}" title="Click to rename">${escHtml(displayName)}</span>
       ${lr.overdrive_url
-        ? `<a href="${escHtml(lr.overdrive_url)}" target="_blank" rel="noopener" style="text-decoration:none" title="${lr.status === 'available' ? 'Borrow on Libby — Kindle delivery available' : 'View on OverDrive'}">${availabilityBadge(lr)}</a>`
+        ? `<a href="${escHtml(lr.overdrive_url)}" target="_blank" rel="noopener" style="text-decoration:none" title="${lr.status === 'available' ? 'Borrow on Libby' : 'Open in Libby'}">${availabilityBadge(lr)}</a>`
         : availabilityBadge(lr)
       }
     </div>`;
@@ -93,7 +93,7 @@ function buildBookCard(event, show, extra) {
     ? (amazon_result.affiliate_url.match(/tag=([^&]+)/)?.[1] || '') : '';
 
   if (gutenberg_result) {
-    pricePills += `<span class="price-pill price-pill-free">Free · Project Gutenberg</span>`;
+    pricePills += `<span class="price-pill price-pill-free">Free on Project Gutenberg</span>`;
   }
   if (amazon_result?.available) {
     const kindle    = formatPrice(amazon_result.kindle_price);
@@ -132,7 +132,7 @@ function buildBookCard(event, show, extra) {
     // unrelated book that happens to share a title), so the user should land
     // somewhere they can confirm it's the right book before downloading.
     const gutenbergPageUrl = `https://www.gutenberg.org/ebooks/${gutenberg_result.id}`;
-    primaryBtns += `<a href="${escHtml(gutenbergPageUrl)}" target="_blank" rel="noopener" class="btn-gutenberg-sm" title="Opens the Project Gutenberg book page — confirm it's the right edition, then download EPUB and send via Send to Kindle app or your @kindle.com email">View on Project Gutenberg ↗</a>`;
+    primaryBtns += `<a href="${escHtml(gutenbergPageUrl)}" target="_blank" rel="noopener" class="btn-gutenberg-sm" title="Opens the book on Project Gutenberg. Check it's the right book, then download the EPUB and send it to your Kindle.">Free on Gutenberg ↗</a>`;
   }
 
   // Kindle buttons
@@ -143,7 +143,7 @@ function buildBookCard(event, show, extra) {
   if (amazon_result?.available && amazon_result.kindle_asin) {
     const kindleUrl = `https://www.amazon.com/dp/${escHtml(amazon_result.kindle_asin)}?tag=${encodeURIComponent(affiliateTag)}`;
     kindleBtns += `<a href="${kindleUrl}" target="_blank" rel="noopener" class="btn-kindle">Buy for Kindle</a>`;
-    kindleBtns += `<a href="${kindleUrl}#sampleButton" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="Opens Amazon — click 'Send sample' to push a preview to your Kindle">Send Preview ↗</a>`;
+    kindleBtns += `<a href="${kindleUrl}#sampleButton" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="Opens Amazon. Click 'Send sample' to get a free preview on your Kindle.">Free sample ↗</a>`;
   } else {
     kindleBtns += `<a href="${kindleSearchUrl}" target="_blank" rel="noopener" class="btn-kindle">Find on Kindle ↗</a>`;
   }
@@ -153,7 +153,7 @@ function buildBookCard(event, show, extra) {
     const previewUrl = isbn
       ? `https://www.amazon.com/gp/search?index=digital-text&field-isbn=${encodeURIComponent(isbn)}`
       : `https://www.amazon.com/s?k=${encodeURIComponent(kindleSearchQ)}&i=digital-text`;
-    kindleBtns += `<a href="${previewUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="Opens Kindle product page — click 'Send a free sample' to push a preview to your Kindle">Send Preview ↗</a>`;
+    kindleBtns += `<a href="${previewUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="Opens Amazon. Click 'Send a free sample' to get a preview on your Kindle.">Free sample ↗</a>`;
   }
 
   if (amazon_result?.affiliate_url) {
@@ -191,7 +191,7 @@ function buildBookCard(event, show, extra) {
 
   const isOLRating = book.rating_source === 'openlibrary';
   const avgRating = book.average_rating
-    ? `<span class="rating-avg" title="${isOLRating ? `Open Library community rating (not ${src.name})` : `${src.name} average rating`}">★ ${book.average_rating.toFixed(2)}${isOLRating ? ` <span class="rating-source-tag">OL${book.ratings_count ? '·' + book.ratings_count : ''}</span>` : ''}</span>`
+    ? `<span class="rating-avg" title="${isOLRating ? `Rating from Open Library (not ${src.name})` : `${src.name} average rating`}">★ ${book.average_rating.toFixed(2)}${isOLRating ? ` <span class="rating-source-tag">OL${book.ratings_count ? '·' + book.ratings_count : ''}</span>` : ''}</span>`
     : '';
   const userRating = book.user_rating
     ? `<span class="rating-user" title="Your ${src.name} rating">${'★'.repeat(book.user_rating)}${'☆'.repeat(5 - book.user_rating)}</span>`
@@ -207,7 +207,7 @@ function buildBookCard(event, show, extra) {
 
   const noKindleAnywhere = neverKindle(library_results);
   const noKindleTag = noKindleAnywhere
-    ? `<span class="tag-no-kindle" title="None of the checked libraries offer this as a Kindle format">No Kindle</span>`
+    ? `<span class="tag-no-kindle" title="None of your libraries have a Kindle version">No Kindle</span>`
     : '';
   const addedStr = book.date_added_unix
     ? `<span class="book-added">${escHtml(relativeAdded(book.date_added_unix))}</span>`

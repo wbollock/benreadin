@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>benreadin — your to-read list, but borrowable</title>
-  <meta name="description" content="Enter a Hardcover shelf to check Libby/OverDrive availability and Amazon prices across multiple libraries.">
-  <meta property="og:title" content="benreadin — check your to-read list on Libby">
-  <meta property="og:description" content="Enter your Hardcover shelf. Find out what's available to borrow right now, what's on hold, and what's free in the public domain.">
+  <title>benreadin: borrow your to-read list on Libby</title>
+  <meta name="description" content="See which books on your Hardcover want-to-read list you can borrow free on Libby.">
+  <meta property="og:title" content="benreadin: borrow your to-read list on Libby">
+  <meta property="og:description" content="See which books on your to-read list you can borrow free on Libby right now.">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -41,7 +41,7 @@
         <a href="/">benreadin</a>
       </div>
       <div style="margin-left:auto;">
-        <button id="theme-toggle" class="btn-theme" title="Toggle dark/light mode" aria-label="Toggle dark mode">
+        <button id="theme-toggle" class="btn-theme" title="Switch between light and dark" aria-label="Switch between light and dark">
           <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         </button>
@@ -52,29 +52,29 @@
   <main>
     <section class="hero">
       <div class="container">
-        <h1>Your to-read pile,<br>checked out of the library.</h1>
-        <p>Enter your Hardcover shelf. We'll tell you what's borrowable on Libby right now, what's on hold, and what's free in the public domain.</p>
+        <h1>What can you borrow<br>from your to-read list?</h1>
+        <p>Enter your Hardcover username and pick your library. We'll show which books you can borrow now, which have a wait, and which are free online.</p>
 
         <div class="search-card">
           <div id="error-banner" class="error-banner" role="alert" aria-live="assertive"></div>
 
           <form id="search-form" novalidate>
             <div class="form-group">
-              <span class="form-label" id="source-label">Where your books live</span>
+              <span class="form-label" id="source-label">Your books are on</span>
               <div class="source-picker" role="radiogroup" aria-labelledby="source-label">
                 <label class="source-option">
                   <input type="radio" name="source" value="hardcover" checked>
                   <span class="source-name">Hardcover</span>
                 </label>
-                <label class="source-option source-option--disabled" title="Goodreads shut off public shelf access in November 2026">
+                <label class="source-option source-option--disabled" title="Goodreads stopped sharing shelves with other sites in November 2026">
                   <input type="radio" name="source" value="goodreads" disabled>
                   <span class="source-name">Goodreads</span>
-                  <span class="source-tag">no longer works</span>
+                  <span class="source-tag">stopped working</span>
                 </label>
-                <label class="source-option source-option--disabled" title="StoryGraph has no public API yet">
+                <label class="source-option source-option--disabled" title="StoryGraph doesn't let other sites read your books yet">
                   <input type="radio" name="source" value="storygraph" disabled>
                   <span class="source-name">StoryGraph</span>
-                  <span class="source-tag">coming later</span>
+                  <span class="source-tag">maybe later</span>
                 </label>
               </div>
             </div>
@@ -82,44 +82,44 @@
             <div class="form-group">
               <label for="shelf-url">
                 Hardcover username
-                <span class="label-hint">@username or profile URL</span>
+                <span class="label-hint">or your profile link</span>
               </label>
               <input
                 type="text"
                 id="shelf-url"
                 name="url"
-                placeholder="@you  or  hardcover.app/@you"
+                placeholder="@yourname"
                 autocomplete="off"
                 autocapitalize="off"
                 spellcheck="false"
                 required
               >
               <div class="url-example">
-                <span class="url-example-label">Showing an example shelf —</span>
-                <button type="button" class="url-example-link url-finder-toggle" id="use-mine-btn">use yours</button>
+                <span class="url-example-label">This is an example.</span>
+                <button type="button" class="url-example-link url-finder-toggle" id="use-mine-btn">Use your own</button>
                 <span class="url-example-label">·</span>
                 <button type="button" class="url-example-link url-finder-toggle" id="url-finder-toggle" aria-expanded="false" aria-controls="url-finder">
-                  don't know your username?
+                  Where do I find it?
                 </button>
               </div>
               <div class="url-finder" id="url-finder" hidden>
                 <ol class="url-finder-steps">
-                  <li>Sign in at <strong>hardcover.app</strong> (free).</li>
-                  <li>Coming from Goodreads? Export your library (Goodreads → My Books → Import and export), then import it in <strong>Hardcover → Settings → Import</strong>.</li>
-                  <li>Your username is in your profile URL: <code>hardcover.app/@<strong>you</strong></code>. Paste it above.</li>
+                  <li>Sign in to <strong>hardcover.app</strong>. It's free.</li>
+                  <li>Moving from Goodreads? Export your books there (My Books → Import and export), then import them on Hardcover (<strong>Settings → Import</strong>).</li>
+                  <li>Your username is the part after the @ in your profile link: <code>hardcover.app/@<strong>yourname</strong></code></li>
                 </ol>
                 <div class="url-finder-actions">
                   <a href="https://hardcover.app/account/imports" target="_blank" rel="noopener" class="btn-secondary btn-sm">Import from Goodreads ↗</a>
-                  <span class="url-finder-note">Your library must be public on Hardcover.</span>
+                  <span class="url-finder-note">Your Hardcover library has to be public.</span>
                 </div>
               </div>
             </div>
 
             <div class="form-group">
-              <label for="shelf-select">Shelf <span class="label-hint">which shelf to check</span></label>
+              <label for="shelf-select">List <span class="label-hint">which list to check</span></label>
               <div class="shelf-row">
                 <select id="shelf-select" class="filter-select">
-                  <option value="to-read" selected>To Read</option>
+                  <option value="to-read" selected>Want to Read</option>
                   <option value="currently-reading">Currently Reading</option>
                   <option value="read">Read</option>
                   <option value="did-not-finish">Did Not Finish</option>
@@ -137,14 +137,14 @@
             </div>
 
             <div class="form-group">
-              <label>Libraries <span class="label-hint">type a name or key, or click to browse</span></label>
+              <label>Libraries <span class="label-hint">type your library's name</span></label>
               <div class="library-input-wrap">
                 <div class="library-chips" id="library-chips" tabindex="0">
                   <input
                     type="text"
                     class="chip-input"
                     id="library-input"
-                    placeholder="e.g. nypl, lapl, tpl…"
+                    placeholder="Library name, or a code like nypl"
                     autocomplete="off"
                     aria-label="Add library"
                   >
@@ -152,13 +152,13 @@
                 <div class="autocomplete-list" id="autocomplete-list" role="listbox"></div>
               </div>
               <p class="url-example" style="margin-top:8px;">
-                <span class="url-example-label">The key is in your Libby URL:</span>
+                <span class="url-example-label">Codes look like</span>
                 <code style="font-size:.75rem;color:var(--text-subtle);">nypl</code>
                 <span class="url-example-label">·</span>
                 <code style="font-size:.75rem;color:var(--text-subtle);">lapl</code>
                 <span class="url-example-label">·</span>
                 <code style="font-size:.75rem;color:var(--text-subtle);">tpl</code>
-                <span class="url-example-label">— <a href="#how">how do I find mine?</a></span>
+                <span class="url-example-label"><a href="#how">Where do I find mine?</a></span>
               </p>
               <input type="hidden" id="libraries-hidden" name="libraries">
             </div>
@@ -167,7 +167,7 @@
               <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                 <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
               </svg>
-              Check availability
+              Check my books
             </button>
           </form>
         </div>
@@ -177,15 +177,15 @@
           <div class="how-steps">
             <div class="how-step">
               <span class="how-step-num">1</span>
-              <span>Track your books on <strong>Hardcover</strong> (import your Goodreads library in a few minutes) and make sure your library is public. Enter your <code style="font-size:.85em;color:var(--text-subtle);">@username</code> above.</span>
+              <span>Put your books on <strong>Hardcover</strong>. You can bring them over from Goodreads in a few minutes. Make your library public, then enter your <code style="font-size:.85em;color:var(--text-subtle);">@username</code> above.</span>
             </div>
             <div class="how-step">
               <span class="how-step-num">2</span>
-              <span>Find your library's key in the Libby app URL — e.g. <code style="font-size:.85em;color:var(--text-subtle);">libbyapp.com/library/<strong>nypl</strong></code>. Add it above.</span>
+              <span>Pick your library. Search by name, or use the code from your Libby link, like <code style="font-size:.85em;color:var(--text-subtle);">libbyapp.com/library/<strong>nypl</strong></code>.</span>
             </div>
             <div class="how-step">
               <span class="how-step-num">3</span>
-              <span>Hit <em>Check availability</em>. Results stream in as each book is checked — available books appear first.</span>
+              <span>Press <em>Check my books</em>. Books show up as they're checked, with the ones you can borrow now at the top.</span>
             </div>
           </div>
         </div>
@@ -195,9 +195,9 @@
 
   <footer class="site-footer">
     <div class="container">
-      <p>benreadin is not affiliated with Hardcover, Goodreads, Libby, OverDrive, or Amazon. Borrow data is live from OverDrive. As an Amazon Associate, benreadin may earn from qualifying purchases.</p>
+      <p>benreadin isn't connected to Hardcover, Goodreads, Libby, OverDrive or Amazon. Library info comes live from OverDrive. As an Amazon Associate, benreadin may earn from qualifying purchases.</p>
       <div class="footer-reset">
-        <button type="button" id="reset-data-btn" title="Clear this site's saved data if the page is misbehaving">Reset saved data</button>
+        <button type="button" id="reset-data-btn" title="Clear what this site saved in your browser, if something looks broken">Reset saved data</button>
       </div>
     </div>
   </footer>
@@ -209,7 +209,7 @@
       var b = document.getElementById('reset-data-btn');
       if (!b) return;
       b.addEventListener('click', function () {
-        if (!confirm('Clear saved settings (library names, recent libraries) and reload?')) return;
+        if (!confirm('Clear your saved settings (library names, recent libraries) and reload the page?')) return;
         try { localStorage.clear(); } catch (e) { /* storage blocked */ }
         try { sessionStorage.clear(); } catch (e) { /* storage blocked */ }
         location.reload();

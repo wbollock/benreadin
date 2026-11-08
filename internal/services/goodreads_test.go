@@ -10,11 +10,11 @@ func TestGoodreadsStatusErrorMessages(t *testing.T) {
 		code int
 		want string // substring the user-facing message must contain
 	}{
-		{404, "public"},
+		{404, "Hardcover"}, // the feed is gone for everyone; point users to Hardcover
 		{403, "private"},
 		{401, "private"},
-		{429, "rate-limiting"},
-		{503, "having trouble"},
+		{429, "busy"},
+		{503, "having problems"},
 		{418, "HTTP 418"},
 	}
 	for _, tt := range tests {

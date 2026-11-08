@@ -25,10 +25,10 @@ func TestParseShelfURLHardcover(t *testing.T) {
 		{input: "https://hardcover.app/@wbollock/books/currently-reading", wantUser: "@wbollock", wantShelf: "currently-reading"},
 		{input: "https://hardcover.app/@wbollock/books/read?x=1", wantUser: "@wbollock", wantShelf: "read"},
 		{input: "https://hardcover.app/@wbollock/books/did-not-finish", wantUser: "@wbollock", wantShelf: "did-not-finish"},
-		{input: "https://hardcover.app/@wbollock/books/owned", wantErr: "unsupported Hardcover shelf"},
-		{input: "https://hardcover.app/books/dune", wantErr: "unrecognised Hardcover URL"},
-		{input: "@bad name", wantErr: "invalid Hardcover username"},
-		{input: "@", wantErr: "invalid Hardcover username"},
+		{input: "https://hardcover.app/@wbollock/books/owned", wantErr: "doesn't have a"},
+		{input: "https://hardcover.app/books/dune", wantErr: "doesn't look like a Hardcover"},
+		{input: "@bad name", wantErr: "isn't a valid Hardcover username"},
+		{input: "@", wantErr: "isn't a valid Hardcover username"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

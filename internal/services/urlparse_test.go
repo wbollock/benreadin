@@ -89,7 +89,7 @@ func TestParseShelfURL(t *testing.T) {
 		{
 			name:        "unsupported host",
 			input:       "https://example.com/user/123",
-			wantErrFrag: "unsupported URL host",
+			wantErrFrag: "doesn't know links from",
 		},
 		// Error: OverReader without library keys
 		{
@@ -101,7 +101,7 @@ func TestParseShelfURL(t *testing.T) {
 		{
 			name:        "bad goodreads path",
 			input:       "https://www.goodreads.com/book/show/12345",
-			wantErrFrag: "unrecognised Goodreads URL",
+			wantErrFrag: "doesn't look like a Goodreads",
 		},
 	}
 

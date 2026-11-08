@@ -347,8 +347,8 @@
     }
     searchExpandNotice.style.display = 'block';
     searchExpandNotice.innerHTML =
-      `No matches for “${escHtml(searchQuery)}” in your current filters — showing ${count} ` +
-      `result${count === 1 ? '' : 's'} from your full shelf instead. ` +
+      `Nothing matches “${escHtml(searchQuery)}” with these filters. Showing ${count} ` +
+      `result${count === 1 ? '' : 's'} from your whole list instead. ` +
       `<button type="button" id="clear-filters-for-search" class="link-btn">Clear filters</button>`;
   }
 
@@ -394,8 +394,8 @@
       const streaming = ready < totalBooks;
       if (streaming) {
         resultsCount.textContent = visibleCount !== undefined && visibleCount !== ready
-          ? `(${visibleCount} shown — ${ready} / ${totalBooks} checked)`
-          : `(${ready} / ${totalBooks} checked)`;
+          ? `(${visibleCount} shown, ${ready} of ${totalBooks} checked)`
+          : `(${ready} of ${totalBooks} checked)`;
       } else if (visibleCount !== undefined && visibleCount !== ready) {
         resultsCount.textContent = `(${visibleCount} of ${ready})`;
       } else {
@@ -541,7 +541,7 @@
 
     const ageMin = Math.round((Date.now() - entry.timestamp) / 60000);
     const ageStr = ageMin < 1 ? 'just now' : `${ageMin} min ago`;
-    setProgress(100, `Showing saved results from ${ageStr} — click Refresh to update`);
+    setProgress(100, `These results are from ${ageStr}. Press Refresh to check again.`);
     setTimeout(() => { document.getElementById('status-area').style.opacity = '0.4'; }, 3000);
     document.getElementById('recs-trigger').style.display = 'block';
     if (kindleReportTrigger) kindleReportTrigger.style.display = 'block';
@@ -568,7 +568,7 @@
   };
 
   if (!shelfUrl) {
-    showError('No URL provided. Go back and enter a shelf URL.');
+    showError('No username given. Go back and enter your Hardcover username.');
     return;
   }
 
@@ -723,7 +723,7 @@
     es.addEventListener('availability_done', e => {
       const data = JSON.parse(e.data);
       availabilityDone = true;
-      setProgress(100, data.message || 'Availability checked');
+      setProgress(100, data.message || 'Done');
       // Final sort pass — reorder existing elements without rebuilding HTML.
       applyView();
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -769,7 +769,7 @@
     es.addEventListener('error', e => {
       try {
         const data = JSON.parse(e.data);
-        showError(data.message || 'An error occurred.');
+        showError(data.message || 'Something went wrong.');
       } catch { /* connection-level error */ }
       es.close();
     });
@@ -785,7 +785,7 @@
         setProgress(100, 'Done');
         return;
       }
-      showError('Connection lost. Please try again.');
+      showError('Lost the connection. Try again.');
       es.close();
     };
   }
@@ -803,7 +803,7 @@
     renameCallback = cb;
     const modal = document.getElementById('rename-modal');
     const input = document.getElementById('rename-input');
-    document.getElementById('rename-hint').textContent = `Key: ${key}`;
+    document.getElementById('rename-hint').textContent = `Code: ${key}`;
     input.value = window.getLibName(key);
     modal.style.display = 'flex';
     setTimeout(() => { input.select(); }, 50);
@@ -859,10 +859,10 @@
 
       kindleReportGrid.innerHTML = gaps.length
         ? gaps.map(event => buildBookCard(event, true)).join('')
-        : '<p style="color:var(--text-muted);font-size:.875rem;padding:8px 0;">Nothing missing — every book your libraries carry also offers a Kindle format.</p>';
+        : '<p style="color:var(--text-muted);font-size:.875rem;padding:8px 0;">Nothing missing. Every book at your libraries also comes in a Kindle version.</p>';
       kindleReportSubtitle.textContent = gaps.length
-        ? `${gaps.length} of ${allBooks.length} book${gaps.length === 1 ? '' : 's'} your libraries carry (or have on hold) never offer a Kindle format.`
-        : 'Books your libraries carry (or have on hold) but never offer as a Kindle format.';
+        ? `${gaps.length} of your ${allBooks.length} books ${gaps.length === 1 ? 'is' : 'are'} at your libraries, but not in a Kindle version.`
+        : 'Your libraries have these books, but not in a Kindle version.';
 
       kindleReportPanel.style.display = 'block';
       kindleReportPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -886,12 +886,12 @@
   // only the provenance line is rec-specific.
   function buildRecCard(rec) {
     const because = rec.because_series || rec.because_author
-      || (rec.because_subject ? `Matches your ${rec.because_subject} reading` : '');
+      || (rec.because_subject ? `Like the ${rec.because_subject} books you've read` : '');
     const becauseHtml = because ? `<div class="rec-because">${escHtml(because)}</div>` : '';
     return buildBookCard(rec, true, becauseHtml);
   }
 
-  const RECS_BTN_IDLE = 'Recommend me more books ↓';
+  const RECS_BTN_IDLE = 'Suggest more books ↓';
 
   let recsES = null;
 
@@ -924,7 +924,7 @@
     const loadingLabel = document.getElementById('recs-loading-label');
     es.addEventListener('rec_progress', e => {
       const data = JSON.parse(e.data);
-      const label = { profile: 'Reading your shelves…', series: 'Checking series you’re reading…', authors: 'Checking authors you’ve enjoyed…' }[data.stage] || 'Finding books for you…';
+      const label = { profile: 'Looking at your books…', series: 'Checking your series…', authors: 'Checking your favorite authors…' }[data.stage] || 'Finding books for you…';
       if (loadingLabel) loadingLabel.textContent = label;
     });
 
@@ -944,14 +944,14 @@
       trigger.style.display = 'none';
       loading.style.display = 'none';
       if (recsFound === 0) {
-        recsGrid.innerHTML = '<p style="color:var(--text-muted);font-size:.875rem;padding:8px 0;">No available-now Kindle matches at your libraries right now — try again later or add more books to your shelves.</p>';
+        recsGrid.innerHTML = '<p style="color:var(--text-muted);font-size:.875rem;padding:8px 0;">Nothing to suggest right now. Your libraries don&rsquo;t have a match you can borrow on Kindle today. Try again later.</p>';
       }
     });
 
     es.addEventListener('error', e => {
       try {
         const data = JSON.parse(e.data);
-        recsGrid.innerHTML = `<p style="color:var(--red);font-size:.875rem;padding:8px 0;">${escHtml(data.message || 'Failed to load recommendations.')}</p>`;
+        recsGrid.innerHTML = `<p style="color:var(--red);font-size:.875rem;padding:8px 0;">${escHtml(data.message || "Couldn't load suggestions.")}</p>`;
       } catch { /* connection-level error, handled below */ }
     });
 
@@ -990,7 +990,7 @@
       btn.style.display = 'inline-flex';
       btn.addEventListener('click', () => {
         if (navigator.share) {
-          navigator.share({ title: 'BenReadin results', url: fullLink }).catch(() => {});
+          navigator.share({ title: 'benreadin results', url: fullLink }).catch(() => {});
           return;
         }
         navigator.clipboard.writeText(fullLink).then(() => {

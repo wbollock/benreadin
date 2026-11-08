@@ -48,13 +48,13 @@ func (e *GoodreadsStatusError) Error() string {
 	case e.Code == http.StatusNotFound:
 		// Since Nov 2026 Goodreads 404s list_rss for every user — the public
 		// shelf feed is gone, so a 404 almost never means a typo'd ID.
-		return "Goodreads has shut off public shelf access, so benreadin can't read Goodreads shelves anymore. Import your Goodreads library into Hardcover (free: hardcover.app → Settings → Import) and paste your Hardcover profile URL instead, e.g. hardcover.app/@you."
+		return "Goodreads stopped sharing shelves, so benreadin can't read them anymore. Move your books to Hardcover (it's free: Settings → Import), then enter your Hardcover username, like @yourname."
 	case e.Code == http.StatusUnauthorized || e.Code == http.StatusForbidden:
-		return "That Goodreads profile looks private. Make it public under Goodreads → Account Settings → Privacy, then try again."
+		return "That Goodreads profile is private. Make it public in your Goodreads settings, then try again."
 	case e.Code == http.StatusTooManyRequests:
-		return "Goodreads is rate-limiting requests right now — wait a minute and try again."
+		return "Goodreads is busy. Wait a minute and try again."
 	case e.Code >= 500:
-		return "Goodreads is having trouble right now — try again in a few minutes."
+		return "Goodreads is having problems. Try again in a few minutes."
 	default:
 		return fmt.Sprintf("Goodreads returned an unexpected error (HTTP %d).", e.Code)
 	}
