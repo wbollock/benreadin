@@ -72,7 +72,7 @@ func main() {
 	cache := services.NewCacheService(database, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL, cfg.shelfTTL, cfg.recProfileTTL)
 
 	goodreadsSvc := services.NewGoodreadsService(cache)
-	hardcoverSvc := services.NewHardcoverService(cfg.hardcoverToken, cache)
+	hardcoverSvc := services.NewHardcoverService(cfg.hardcoverToken, cache, cfg.hardcoverShelfTTL)
 	if hardcoverSvc.Enabled() {
 		slog.Info("hardcover API enabled")
 	} else {
@@ -148,7 +148,9 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
-	r.Use(chimw.RealIP)
+	// Not chimw.RealIP: it trusts forged headers from any peer (deprecated in
+	// chi v5.3.0). Headers are honored only from TRUSTED_PROXY_CIDRS.
+	r.Use(appmw.ClientIP(cfg.trustedProxies))
 	r.Use(appmw.Tracing)
 	r.Use(chimw.Recoverer)
 	r.Use(appmw.Logger)
@@ -217,6 +219,8 @@ type config struct {
 	bookTTL           int64
 	shelfTTL          int64
 	hardcoverToken    string
+	hardcoverShelfTTL int64
+	trustedProxies    string
 	odConcurrency     int64
 	odPerSearch       int64
 	azConcurrency     int64
@@ -247,6 +251,8 @@ func loadConfig() config {
 		odPerSearch:       envInt64("CONCURRENCY_OVERDRIVE_PER_SEARCH", 16),
 		azConcurrency:     envInt64("CONCURRENCY_AMAZON", 3),
 		hardcoverToken:    os.Getenv("HARDCOVER_API_TOKEN"),
+		hardcoverShelfTTL: envInt64("CACHE_TTL_HARDCOVER_SHELF_SECONDS", 1800),
+		trustedProxies:    envOrDefault("TRUSTED_PROXY_CIDRS", appmw.DefaultTrustedProxies),
 		amazonAccessKey:   os.Getenv("AMAZON_ACCESS_KEY"),
 		amazonSecretKey:   os.Getenv("AMAZON_SECRET_KEY"),
 		amazonPartnerTag:  os.Getenv("AMAZON_PARTNER_TAG"),

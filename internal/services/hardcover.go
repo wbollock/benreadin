@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,7 +16,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/singleflight"
+	"golang.org/x/time/rate"
 
+	"github.com/wbollock/benreadin/internal/db"
 	"github.com/wbollock/benreadin/internal/metrics"
 	"github.com/wbollock/benreadin/internal/models"
 )
@@ -27,6 +30,12 @@ const (
 	// covering almost every shelf in one request.
 	hardcoverPageSize = 500
 	hardcoverMaxPages = 10 // 5000 books
+	// hardcoverStaleMaxAge is how old a cached shelf may be and still be
+	// served when Hardcover is down or rate-limiting us.
+	hardcoverStaleMaxAge = db.HardcoverShelfRetentionSeconds
+	// hardcoverReqPerMin stays under Hardcover's ~60 req/min per-token limit,
+	// which every visitor (and the prewarm loop) shares.
+	hardcoverReqPerMin = 50
 	// HardcoverIDPrefix namespaces Hardcover book IDs in Book.GoodreadsID (the
 	// app-wide book cache key / DOM id) so they can never collide with numeric
 	// Goodreads IDs.
@@ -85,15 +94,22 @@ type HardcoverService struct {
 	endpoint string
 	client   *http.Client
 	cache    *CacheService // nil disables shelf caching (tests)
+	ttl      int64         // fresh-cache TTL in seconds for Hardcover shelves
+	limiter  *rate.Limiter
 	flight   singleflight.Group
 }
 
-func NewHardcoverService(token string, cache *CacheService) *HardcoverService {
+// NewHardcoverService builds the client. ttlSeconds is how long a fetched
+// shelf is served from cache before refetching (the results page's Refresh
+// button bypasses it); <= 0 uses the cache's default shelf TTL.
+func NewHardcoverService(token string, cache *CacheService, ttlSeconds int64) *HardcoverService {
 	return &HardcoverService{
 		token:    strings.TrimSpace(token),
 		endpoint: hardcoverAPIURL,
 		client:   newHTTPClient(20*time.Second, 2),
 		cache:    cache,
+		ttl:      ttlSeconds,
+		limiter:  rate.NewLimiter(rate.Every(time.Minute/hardcoverReqPerMin), 5),
 	}
 }
 
@@ -117,7 +133,14 @@ func (s *HardcoverService) FetchShelf(ctx context.Context, username, shelf strin
 	cacheKey := "@" + username + "|" + HardcoverShelfName(shelf)
 	if !refresh && s.cache != nil {
 		var books []models.Book
-		if hit, err := s.cache.GetShelf(cacheKey, &books); err != nil {
+		var hit bool
+		var err error
+		if s.ttl > 0 {
+			hit, err = s.cache.GetShelfMaxAge(cacheKey, s.ttl, &books)
+		} else {
+			hit, err = s.cache.GetShelf(cacheKey, &books)
+		}
+		if err != nil {
 			slog.Warn("shelf cache read failed", "err", err)
 		} else if hit {
 			slog.Debug("shelf cache hit", "user", "@"+username, "shelf", shelf)
@@ -141,9 +164,36 @@ func (s *HardcoverService) FetchShelf(ctx context.Context, username, shelf strin
 		return books, nil
 	})
 	if err != nil {
+		if books, ok := s.staleShelf(cacheKey, err); ok {
+			return books, nil
+		}
 		return nil, err
 	}
 	return v.([]models.Book), nil
+}
+
+// staleShelf serves a cached shelf up to a week old when the fetch failed for
+// a transient reason (rate limit, outage, network), so a Hardcover hiccup
+// degrades to slightly old data instead of an error page. Definitive answers
+// (unknown user, bad shelf, rejected token) are never masked.
+func (s *HardcoverService) staleShelf(cacheKey string, fetchErr error) ([]models.Book, bool) {
+	if s.cache == nil {
+		return nil, false
+	}
+	var hcErr *HardcoverError
+	if errors.As(fetchErr, &hcErr) {
+		switch hcErr.Kind {
+		case "not_found", "bad_shelf", "auth", "unconfigured":
+			return nil, false
+		}
+	}
+	var books []models.Book
+	hit, err := s.cache.GetShelfMaxAge(cacheKey, hardcoverStaleMaxAge, &books)
+	if err != nil || !hit {
+		return nil, false
+	}
+	slog.Warn("hardcover fetch failed; serving stale cached shelf", "key", cacheKey, "err", fetchErr)
+	return books, true
 }
 
 const hardcoverShelfQuery = `query Shelf($u: citext!, $s: Int!, $l: Int!, $o: Int!) {
@@ -235,6 +285,13 @@ func (s *HardcoverService) fetchAll(ctx context.Context, username string, status
 }
 
 func (s *HardcoverService) query(ctx context.Context, username string, status, offset int) (*hcResponse, error) {
+	if s.limiter != nil {
+		// Queue rather than fail when over budget; a canceled request (user
+		// navigated away) stops waiting.
+		if err := s.limiter.Wait(ctx); err != nil {
+			return nil, err
+		}
+	}
 	body, err := json.Marshal(map[string]any{
 		"query": hardcoverShelfQuery,
 		"variables": map[string]any{

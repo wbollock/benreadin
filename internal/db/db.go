@@ -70,6 +70,10 @@ func addColumnIfMissing(db *sql.DB, table, column, decl string) error {
 	return err
 }
 
+// HardcoverShelfRetentionSeconds is how long cached Hardcover shelves are
+// kept; it must match services.hardcoverStaleMaxAge.
+const HardcoverShelfRetentionSeconds = 7 * 24 * 3600
+
 func purgeStale(db *sql.DB, libraryTTL, amazonTTL, bookTTL, shelfTTL, recProfileTTL int64) error {
 	_, err := db.Exec(
 		`DELETE FROM library_cache WHERE fetched_at <= (unixepoch() - ?)`,
@@ -85,9 +89,18 @@ func purgeStale(db *sql.DB, libraryTTL, amazonTTL, bookTTL, shelfTTL, recProfile
 	if err != nil {
 		return err
 	}
+	// Hardcover shelves ("@user|shelf" keys) are kept for a week: they back
+	// HardcoverService's stale-on-error fallback and outlive the default TTL.
 	_, err = db.Exec(
-		`DELETE FROM shelf_cache WHERE fetched_at <= (unixepoch() - ?)`,
+		`DELETE FROM shelf_cache WHERE cache_key NOT LIKE '@%' AND fetched_at <= (unixepoch() - ?)`,
 		shelfTTL,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(
+		`DELETE FROM shelf_cache WHERE cache_key LIKE '@%' AND fetched_at <= (unixepoch() - ?)`,
+		HardcoverShelfRetentionSeconds,
 	)
 	if err != nil {
 		return err

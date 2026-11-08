@@ -190,13 +190,20 @@ func (c *CacheService) BookFetchedAt(goodreadsID, librariesKey string) (int64, b
 	return fetchedAt, true, nil
 }
 
-// GetShelf retrieves a cached parsed Goodreads shelf. Returns false on miss.
+// GetShelf retrieves a cached parsed shelf within the default shelf TTL.
+// Returns false on miss.
 func (c *CacheService) GetShelf(cacheKey string, out interface{}) (bool, error) {
+	return c.GetShelfMaxAge(cacheKey, c.shelfTTL, out)
+}
+
+// GetShelfMaxAge is GetShelf with an explicit max age in seconds — used for
+// source-specific TTLs and for serving a stale shelf when upstream fails.
+func (c *CacheService) GetShelfMaxAge(cacheKey string, maxAgeSeconds int64, out interface{}) (bool, error) {
 	var jsonStr string
 	err := c.db.QueryRow(
 		`SELECT events_json FROM shelf_cache
 		 WHERE cache_key = ? AND fetched_at > (unixepoch() - ?)`,
-		cacheKey, c.shelfTTL,
+		cacheKey, maxAgeSeconds,
 	).Scan(&jsonStr)
 	if err == sql.ErrNoRows {
 		observeCache("shelf", false)

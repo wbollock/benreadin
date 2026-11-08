@@ -66,7 +66,7 @@ func newTestHardcover(t *testing.T, handler http.HandlerFunc) *HardcoverService 
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	s := NewHardcoverService("Bearer test-token", nil)
+	s := NewHardcoverService("Bearer test-token", nil, 0)
 	s.endpoint = srv.URL
 	return s
 }
@@ -149,10 +149,10 @@ func TestHardcoverErrors(t *testing.T) {
 
 func TestHardcoverUnconfiguredAndBadShelf(t *testing.T) {
 	var hcErr *HardcoverError
-	if _, err := NewHardcoverService("", nil).FetchShelf(context.Background(), "x", "to-read", false); !errors.As(err, &hcErr) || hcErr.Kind != "unconfigured" {
+	if _, err := NewHardcoverService("", nil, 0).FetchShelf(context.Background(), "x", "to-read", false); !errors.As(err, &hcErr) || hcErr.Kind != "unconfigured" {
 		t.Errorf("unconfigured: %v", err)
 	}
-	if _, err := NewHardcoverService("t", nil).FetchShelf(context.Background(), "x", "sci-fi", false); !errors.As(err, &hcErr) || hcErr.Kind != "bad_shelf" {
+	if _, err := NewHardcoverService("t", nil, 0).FetchShelf(context.Background(), "x", "sci-fi", false); !errors.As(err, &hcErr) || hcErr.Kind != "bad_shelf" {
 		t.Errorf("bad shelf: %v", err)
 	}
 }
@@ -161,9 +161,69 @@ func TestShelfRouter(t *testing.T) {
 	if !IsHardcoverUser("@x") || IsHardcoverUser("97106512") {
 		t.Fatal("IsHardcoverUser")
 	}
-	r := &ShelfRouter{Goodreads: NewGoodreadsService(nil), Hardcover: NewHardcoverService("", nil)}
+	r := &ShelfRouter{Goodreads: NewGoodreadsService(nil), Hardcover: NewHardcoverService("", nil, 0)}
 	var hcErr *HardcoverError
 	if _, err := r.FetchShelf(context.Background(), "@x", "to-read", false); !errors.As(err, &hcErr) {
 		t.Errorf("@user should route to Hardcover, got %v", err)
+	}
+}
+
+// ageShelf backdates a cached shelf row by the given number of seconds.
+func ageShelf(t *testing.T, c *CacheService, key string, seconds int64) {
+	t.Helper()
+	if _, err := c.db.Exec(`UPDATE shelf_cache SET fetched_at = fetched_at - ? WHERE cache_key = ?`, seconds, key); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHardcoverCacheTTLAndStaleFallback(t *testing.T) {
+	cache := newTestCache(t) // default shelf TTL 300s
+	calls := 0
+	failWith := 0 // HTTP status to fail with; 0 = succeed
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if failWith != 0 {
+			w.WriteHeader(failWith)
+			return
+		}
+		io.WriteString(w, hcFixture)
+	}))
+	t.Cleanup(srv.Close)
+	s := NewHardcoverService("tok", cache, 1800)
+	s.endpoint = srv.URL
+	ctx := context.Background()
+	const key = "@wbollock|to-read"
+
+	if _, err := s.FetchShelf(ctx, "wbollock", "want-to-read", false); err != nil {
+		t.Fatal(err)
+	}
+	// 10 minutes old: past the 5-minute default, inside the 30-minute Hardcover TTL.
+	ageShelf(t, cache, key, 600)
+	if _, err := s.FetchShelf(ctx, "wbollock", "to-read", false); err != nil || calls != 1 {
+		t.Fatalf("expected cache hit within Hardcover TTL; calls=%d err=%v", calls, err)
+	}
+	// refresh bypasses the cache.
+	if _, err := s.FetchShelf(ctx, "wbollock", "to-read", true); err != nil || calls != 2 {
+		t.Fatalf("expected refetch on refresh; calls=%d err=%v", calls, err)
+	}
+
+	// 2 days old and Hardcover rate-limiting: serve the stale shelf.
+	ageShelf(t, cache, key, 2*24*3600)
+	failWith = http.StatusTooManyRequests
+	books, err := s.FetchShelf(ctx, "wbollock", "to-read", false)
+	if err != nil || len(books) != 2 {
+		t.Fatalf("expected stale shelf on 429; books=%d err=%v", len(books), err)
+	}
+	// A rejected token is not masked by stale data.
+	failWith = http.StatusUnauthorized
+	var hcErr *HardcoverError
+	if _, err := s.FetchShelf(ctx, "wbollock", "to-read", false); !errors.As(err, &hcErr) || hcErr.Kind != "auth" {
+		t.Fatalf("auth error should surface, got %v", err)
+	}
+	// Older than the retention window: the error surfaces.
+	ageShelf(t, cache, key, 8*24*3600)
+	failWith = http.StatusBadGateway
+	if _, err := s.FetchShelf(ctx, "wbollock", "to-read", false); !errors.As(err, &hcErr) || hcErr.Kind != "unavailable" {
+		t.Fatalf("expected unavailable past retention, got %v", err)
 	}
 }
