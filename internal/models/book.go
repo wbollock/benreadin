@@ -5,9 +5,13 @@ import (
 	"strings"
 )
 
-// Book represents a single book from a Goodreads shelf.
+// Book represents a single book from a Goodreads or Hardcover shelf.
 type Book struct {
+	// GoodreadsID is the app-wide book key (book cache, DOM ids). For
+	// Hardcover books it holds "hc-<hardcover book id>" — see Source.
 	GoodreadsID   string  `json:"goodreads_id"`
+	Source        string  `json:"source,omitempty"`   // "hardcover" | "" (Goodreads)
+	BookURL       string  `json:"book_url,omitempty"` // source book page; empty → derive Goodreads URL
 	Title         string  `json:"title"`
 	Author        string  `json:"author"`
 	ISBN10        string  `json:"isbn10"`

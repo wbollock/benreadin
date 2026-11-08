@@ -4,16 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-BenReadin: paste a Goodreads shelf URL (or OverReader URL), pick Libby/OverDrive libraries, and stream back per-book availability, Amazon prices, and free Project Gutenberg matches. Single Go binary serving a vanilla-JS frontend from `public/`; SQLite for caching only (no user data).
+BenReadin: enter a Hardcover username/profile URL (Goodreads and OverReader URLs still parse, but Goodreads' public RSS is dead since Nov 2026), pick Libby/OverDrive libraries, and stream back per-book availability, Amazon prices, and free Project Gutenberg matches. Single Go binary serving a vanilla-JS frontend from `public/`; SQLite for caching only (no user data).
 
 ## Commands
 
-Tasks are defined in `.mise.toml` (Go 1.25 via mise):
+Tasks are defined in `.mise.toml`, which pins the toolchain (Go matching go.mod's `toolchain` line, plus Node for JS syntax checks). Run everything through mise so versions match CI:
 
 ```sh
 mise run dev       # go run ./cmd/benreadin  (loads .env via godotenv)
 mise run build     # go build -o bin/benreadin ./cmd/benreadin
-mise run lint      # go vet ./...
+mise run lint      # go vet ./... + node --check public/js/*.js
 mise run test      # go test ./...
 mise run migrate   # go run ./cmd/benreadin -migrate-only
 ```
@@ -28,8 +28,8 @@ The whole app is wired in `cmd/benreadin/main.go`: config from env vars (see `.e
 
 **Search flow** (the core path): `GET /api/search` in `internal/handlers/search.go` is an SSE stream consumed by `EventSource` in `public/js/results.js`.
 
-1. `services/urlparse.go` normalizes the input URL (OverReader-style or raw Goodreads) into userId + shelf.
-2. `services/goodreads.go` fetches the shelf via Goodreads RSS (paginated, no auth). A `book_stubs` SSE event ships the full book list immediately so the frontend renders placeholder cards up front.
+1. `services/urlparse.go` normalizes the input into userId + shelf. Hardcover users become `"@username"`; numeric IDs are Goodreads. That prefix is the only source marker — `ShelfRouter` (`services/hardcover.go`) dispatches on it, and it flows unchanged through caches, recent searches, `PREWARM_SEEDS`, and shortlinks.
+2. `services/hardcover.go` fetches the shelf from the Hardcover GraphQL API (`HARDCOVER_API_TOKEN`, one token for all users' public libraries, ~60 req/min). Hardcover book IDs are stored in `Book.GoodreadsID` as `"hc-<id>"` (it is the app-wide book key), with `Book.Source="hardcover"` and `Book.BookURL`. `services/goodreads.go` (RSS) is kept but upstream 404s for everyone. A `book_stubs` SSE event ships the full book list immediately so the frontend renders placeholder cards up front.
 3. Per book, fan-out under `semaphore.Weighted` limits (`CONCURRENCY_OVERDRIVE`, `CONCURRENCY_AMAZON`): OverDrive Thunder API availability per library (`services/overdrive.go`), Open Library ISBN-13/cover enrichment (`services/openlibrary.go`), Amazon PA-API pricing (`services/amazon.go`), Gutenberg catalog match (`services/gutenberg.go`). Each finished book is sent as a `book` SSE event; `progress` events track completion.
 
 **Caching** is layered in SQLite (`internal/db/schema.sql`, helpers in `services/cache.go`), all TTL-enforced by comparing `fetched_at` at read time: `library_cache` (2h), `amazon_cache` (24h), `book_cache` (full BookEvent per goodreads_id + library set, 2h, read as one batched `IN` query per search), `shelf_cache` (parsed Goodreads shelf list per userID|shelf, 5min). Concurrent identical fetches are coalesced with `singleflight` (Goodreads shelves, OverDrive availability). Schema changes go in `schema.sql` — statements must stay idempotent (`IF NOT EXISTS` / `INSERT OR IGNORE`) since migrations re-run on every startup; column additions use `addColumnIfMissing` in `db.go` instead. The DSN must use modernc's `_pragma=name(value)` syntax — mattn-style params are silently ignored (there is a regression test for WAL).

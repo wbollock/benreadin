@@ -1,5 +1,9 @@
 [tools]
-go = "1.25"
+# Pinned to match go.mod's toolchain directive and the Dockerfile build image.
+go = "1.27.3"
+# Node is only used to syntax-check the build-step-free frontend (public/js);
+# the system Node on the host is too old for optional chaining.
+node = "22.23.4"
 
 [tasks.dev]
 description = "Run dev server"
@@ -19,8 +23,13 @@ description = "Run DB migrations and exit"
 run = "go run ./cmd/benreadin -migrate-only"
 
 [tasks.lint]
-description = "Vet all packages"
+description = "Vet Go packages and syntax-check frontend JS"
+depends = ["lint:js"]
 run = "go vet ./..."
+
+[tasks."lint:js"]
+description = "Syntax-check frontend JS (no build step, so this is the only check)"
+run = "for f in public/js/*.js; do node --check \"$f\" || exit 1; done"
 
 [tasks.test]
 description = "Run all tests"

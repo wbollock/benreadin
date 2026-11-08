@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// ParsedShelfURL contains everything extracted from a Goodreads or OverReader URL.
+// ParsedShelfURL contains everything extracted from a Hardcover, Goodreads, or OverReader URL.
 type ParsedShelfURL struct {
 	UserID    string
 	Shelf     string
@@ -20,8 +20,27 @@ type ParsedShelfURL struct {
 //	https://www.goodreads.com/review/list/{USER_ID}?shelf={SHELF}
 //	https://www.goodreads.com/user/show/{USER_ID}[-slug]   (profile URL)
 //	bare numeric Goodreads user ID (e.g. "12345678")
+//	https://hardcover.app/@{user}[/books[/{status}]]       (Hardcover)
+//	bare "@user" Hardcover username
+//
+// Hardcover users come back with UserID "@user" — that prefix is how the rest
+// of the app (ShelfRouter, caches, prewarm seeds) tells the sources apart.
 func ParseShelfURL(raw string) (*ParsedShelfURL, error) {
 	raw = strings.TrimSpace(raw)
+
+	if strings.HasPrefix(raw, "@") {
+		user := raw[1:]
+		if !validHardcoverUsername(user) {
+			return nil, fmt.Errorf("invalid Hardcover username %q", raw)
+		}
+		return &ParsedShelfURL{UserID: "@" + strings.ToLower(user), Shelf: "to-read"}, nil
+	}
+
+	// Scheme-less paste ("hardcover.app/@you") — url.Parse would treat the
+	// whole thing as a path.
+	if strings.HasPrefix(raw, "hardcover.app/") || strings.HasPrefix(raw, "www.hardcover.app/") {
+		raw = "https://" + raw
+	}
 
 	// Bare Goodreads user ID, optionally with a "-slug" suffix as it appears in
 	// profile URLs (e.g. "97106512" or "97106512-william"). Default to to-read.
@@ -39,8 +58,10 @@ func ParseShelfURL(raw string) (*ParsedShelfURL, error) {
 		return parseOverReaderURL(u)
 	case "www.goodreads.com", "goodreads.com":
 		return parseGoodreadsURL(u)
+	case "hardcover.app", "www.hardcover.app":
+		return parseHardcoverURL(u)
 	default:
-		return nil, fmt.Errorf("unsupported URL host %q — paste a Goodreads shelf/profile URL or OverReader URL", u.Host)
+		return nil, fmt.Errorf("unsupported URL host %q — paste a Hardcover profile URL (hardcover.app/@you) or Goodreads/OverReader URL", u.Host)
 	}
 }
 
@@ -137,6 +158,39 @@ func parseGoodreadsURL(u *url.URL) (*ParsedShelfURL, error) {
 		UserID: parts[2],
 		Shelf:  shelf,
 	}, nil
+}
+
+// parseHardcoverURL parses:
+//
+//	/@{user}                       (profile → to-read)
+//	/@{user}/books                 (library → to-read)
+//	/@{user}/books/{status}        (want-to-read | currently-reading | read | did-not-finish)
+func parseHardcoverURL(u *url.URL) (*ParsedShelfURL, error) {
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) == 0 || !strings.HasPrefix(parts[0], "@") || !validHardcoverUsername(parts[0][1:]) {
+		return nil, fmt.Errorf("unrecognised Hardcover URL — paste your profile URL, e.g. hardcover.app/@you")
+	}
+	shelf := "to-read"
+	if len(parts) >= 3 && parts[1] == "books" && parts[2] != "" {
+		shelf = HardcoverShelfName(parts[2])
+		if _, ok := hardcoverStatusIDs[shelf]; !ok {
+			return nil, fmt.Errorf("unsupported Hardcover shelf %q — use want-to-read, currently-reading, read, or did-not-finish", parts[2])
+		}
+	}
+	return &ParsedShelfURL{UserID: "@" + strings.ToLower(parts[0][1:]), Shelf: shelf}, nil
+}
+
+// validHardcoverUsername allows the characters Hardcover usernames use.
+func validHardcoverUsername(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.') {
+			return false
+		}
+	}
+	return true
 }
 
 func splitComma(s string) []string {

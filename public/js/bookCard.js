@@ -102,10 +102,11 @@ function buildBookCard(event, show, extra) {
   }
   if (pricePills) pricePills = `<div class="price-row">${pricePills}</div>`;
 
-  // ---- Goodreads link ----
-  const grUrl = book.goodreads_id
-    ? `https://www.goodreads.com/book/show/${escHtml(book.goodreads_id)}`
-    : null;
+  // ---- Source link (Hardcover or Goodreads) ----
+  const src = sourceInfo(book);
+  const grUrl = book.book_url
+    ? escHtml(book.book_url)
+    : (book.goodreads_id && !src.isHC ? `https://www.goodreads.com/book/show/${escHtml(book.goodreads_id)}` : null);
 
   // ---- Action buttons ----
   // Group 1: borrow / get for free (primary)
@@ -162,7 +163,7 @@ function buildBookCard(event, show, extra) {
     kindleBtns += `<a href="${buyOnAmazonUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buy on Amazon ↗</a>`;
   }
   if (grUrl) {
-    kindleBtns += `<a href="${grUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="View on Goodreads">GR ↗</a>`;
+    kindleBtns += `<a href="${grUrl}" target="_blank" rel="noopener" class="btn-secondary btn-sm" title="View on ${src.name}">${src.abbr} ↗</a>`;
   }
 
   const actionButtons = (primaryBtns || kindleBtns)
@@ -187,10 +188,10 @@ function buildBookCard(event, show, extra) {
 
   const isOLRating = book.rating_source === 'openlibrary';
   const avgRating = book.average_rating
-    ? `<span class="rating-avg" title="${isOLRating ? 'Open Library community rating (not Goodreads)' : 'Goodreads average rating'}">★ ${book.average_rating.toFixed(2)}${isOLRating ? ` <span class="rating-source-tag">OL${book.ratings_count ? '·' + book.ratings_count : ''}</span>` : ''}</span>`
+    ? `<span class="rating-avg" title="${isOLRating ? `Open Library community rating (not ${src.name})` : `${src.name} average rating`}">★ ${book.average_rating.toFixed(2)}${isOLRating ? ` <span class="rating-source-tag">OL${book.ratings_count ? '·' + book.ratings_count : ''}</span>` : ''}</span>`
     : '';
   const userRating = book.user_rating
-    ? `<span class="rating-user" title="Your Goodreads rating">${'★'.repeat(book.user_rating)}${'☆'.repeat(5 - book.user_rating)}</span>`
+    ? `<span class="rating-user" title="Your ${src.name} rating">${'★'.repeat(book.user_rating)}${'☆'.repeat(5 - book.user_rating)}</span>`
     : '';
   const ratingStr = (avgRating || userRating)
     ? `<div class="book-rating-row">${avgRating}${userRating}</div>`
@@ -256,18 +257,25 @@ function buildSkeletonCard(_, index) {
   `;
 }
 
+// sourceInfo names the shelf source a book came from, for links and tooltips.
+function sourceInfo(book) {
+  const isHC = book.source === 'hardcover';
+  return isHC ? { isHC, name: 'Hardcover', abbr: 'HC' } : { isHC, name: 'Goodreads', abbr: 'GR' };
+}
+
 // buildStubCard renders an immediate placeholder card before availability data
 // arrives. index is used for a staggered cascade animation.
 function buildStubCard(book, libraryKeys, index) {
+  const src = sourceInfo(book);
   const cover = book.cover_url
     ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}" loading="lazy" decoding="async" width="76" height="114" onerror="this.parentElement.innerHTML='${coverPlaceholder(book.title, true)}'">`
     : coverPlaceholder(book.title);
 
   const avgRating = book.average_rating
-    ? `<span class="rating-avg" title="Goodreads average rating">★ ${book.average_rating.toFixed(2)}</span>`
+    ? `<span class="rating-avg" title="${src.name} average rating">★ ${book.average_rating.toFixed(2)}</span>`
     : '';
   const userRating = book.user_rating
-    ? `<span class="rating-user" title="Your Goodreads rating">${'★'.repeat(book.user_rating)}${'☆'.repeat(5 - book.user_rating)}</span>`
+    ? `<span class="rating-user" title="Your ${src.name} rating">${'★'.repeat(book.user_rating)}${'☆'.repeat(5 - book.user_rating)}</span>`
     : '';
   const ratingStr = (avgRating || userRating)
     ? `<div class="book-rating-row">${avgRating}${userRating}</div>`

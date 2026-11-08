@@ -24,7 +24,7 @@ type RecProgress struct {
 // RecommendationService finds books from the user's taste profile that are
 // available to borrow (with Kindle delivery) right now.
 type RecommendationService struct {
-	goodreads   *GoodreadsService
+	shelves     ShelfFetcher
 	overdrive   *OverDriveService
 	openLibrary *OpenLibraryService
 	gutenberg   *GutenbergService
@@ -36,7 +36,7 @@ type RecommendationService struct {
 }
 
 func NewRecommendationService(
-	gr *GoodreadsService,
+	gr ShelfFetcher,
 	od *OverDriveService,
 	ol *OpenLibraryService,
 	gb *GutenbergService,
@@ -49,7 +49,7 @@ func NewRecommendationService(
 		concurrency = 8
 	}
 	return &RecommendationService{
-		goodreads:   gr,
+		shelves:     gr,
 		overdrive:   od,
 		openLibrary: ol,
 		gutenberg:   gb,
@@ -151,11 +151,11 @@ func (s *RecommendationService) getProfile(ctx context.Context, userID string, r
 		}
 	}
 
-	read, err := s.goodreads.FetchShelf(ctx, userID, "read", refresh)
+	read, err := s.shelves.FetchShelf(ctx, userID, "read", refresh)
 	if err != nil {
 		return nil, fmt.Errorf("fetch read shelf: %w", err)
 	}
-	want, err := s.goodreads.FetchShelf(ctx, userID, "to-read", refresh)
+	want, err := s.shelves.FetchShelf(ctx, userID, "to-read", refresh)
 	if err != nil {
 		return nil, fmt.Errorf("fetch to-read shelf: %w", err)
 	}

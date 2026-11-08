@@ -1,8 +1,10 @@
 # benreadin
 
-Paste a Goodreads shelf URL, pick some Libby libraries, and see which books are available to borrow, which have holds, and what everything costs on Amazon. Useful if you're trying to decide what to read next without spending money on it.
+Enter your [Hardcover](https://hardcover.app) username, pick some Libby libraries, and see which books are available to borrow, which have holds, and what everything costs on Amazon. Useful if you're trying to decide what to read next without spending money on it.
 
 Built because [OverReader](https://overreader.net) exists but I wanted to run my own copy. Amazon pricing is optional — the app works fine without it.
+
+**Shelf source:** Hardcover, via its GraphQL API. Set `HARDCOVER_API_TOKEN` (from https://hardcover.app/account/api). One server token reads any user's *public* library. Goodreads support is still in the code, but Goodreads shut off its public shelf RSS in November 2026, so Goodreads shelves fail with a message pointing users to Hardcover's Goodreads import.
 
 ---
 

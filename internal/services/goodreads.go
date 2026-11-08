@@ -46,7 +46,9 @@ type GoodreadsStatusError struct {
 func (e *GoodreadsStatusError) Error() string {
 	switch {
 	case e.Code == http.StatusNotFound:
-		return "Goodreads couldn't find that user or shelf. Double-check the ID or URL — and if it's yours, make sure the profile is public (Goodreads → Account Settings → Privacy → \"anyone\" can view my profile)."
+		// Since Nov 2026 Goodreads 404s list_rss for every user — the public
+		// shelf feed is gone, so a 404 almost never means a typo'd ID.
+		return "Goodreads has shut off public shelf access, so benreadin can't read Goodreads shelves anymore. Import your Goodreads library into Hardcover (free: hardcover.app → Settings → Import) and paste your Hardcover profile URL instead, e.g. hardcover.app/@you."
 	case e.Code == http.StatusUnauthorized || e.Code == http.StatusForbidden:
 		return "That Goodreads profile looks private. Make it public under Goodreads → Account Settings → Privacy, then try again."
 	case e.Code == http.StatusTooManyRequests:

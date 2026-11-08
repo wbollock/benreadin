@@ -65,7 +65,7 @@ type ProgressEvent struct {
 
 // SearchHandler handles POST /api/search and streams results as SSE.
 type SearchHandler struct {
-	goodreads       *services.GoodreadsService
+	shelves         services.ShelfFetcher
 	overdrive       *services.OverDriveService
 	openLibrary     *services.OpenLibraryService
 	amazon          *services.AmazonService
@@ -78,7 +78,7 @@ type SearchHandler struct {
 }
 
 func NewSearchHandler(
-	gr *services.GoodreadsService,
+	shelves services.ShelfFetcher,
 	od *services.OverDriveService,
 	ol *services.OpenLibraryService,
 	az *services.AmazonService,
@@ -91,7 +91,7 @@ func NewSearchHandler(
 		odPerSearch = odConcurrency
 	}
 	return &SearchHandler{
-		goodreads:       gr,
+		shelves:         shelves,
 		overdrive:       od,
 		openLibrary:     ol,
 		amazon:          az,
@@ -201,28 +201,35 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendEvent("progress", ProgressEvent{Message: "Fetching your Goodreads shelf..."})
+	sourceName := "Goodreads"
+	if services.IsHardcoverUser(parsed.UserID) {
+		sourceName = "Hardcover"
+	}
+	sendEvent("progress", ProgressEvent{Message: fmt.Sprintf("Fetching your %s shelf...", sourceName)})
 
-	// Fetch books from Goodreads
-	shelfCtx, shelfSpan := tracer.Start(ctx, "goodreads.fetch_shelf")
+	shelfCtx, shelfSpan := tracer.Start(ctx, "shelf.fetch")
 	shelfSpan.SetAttributes(
-		attribute.String("goodreads.user_id", parsed.UserID),
-		attribute.String("goodreads.shelf", parsed.Shelf),
+		attribute.String("shelf.source", strings.ToLower(sourceName)),
+		attribute.String("shelf.user_id", parsed.UserID),
+		attribute.String("shelf.name", parsed.Shelf),
 	)
-	books, err := h.goodreads.FetchShelf(shelfCtx, parsed.UserID, parsed.Shelf, r.URL.Query().Get("refresh") == "true")
+	books, err := h.shelves.FetchShelf(shelfCtx, parsed.UserID, parsed.Shelf, r.URL.Query().Get("refresh") == "true")
 	if err != nil {
 		shelfSpan.RecordError(err)
 		shelfSpan.SetStatus(codes.Error, err.Error())
 		shelfSpan.End()
-		msg := fmt.Sprintf("Failed to fetch Goodreads shelf: %s", err)
+		msg := fmt.Sprintf("Failed to fetch %s shelf: %s", sourceName, err)
 		var statusErr *services.GoodreadsStatusError
+		var hcErr *services.HardcoverError
 		if errors.As(err, &statusErr) {
 			msg = statusErr.Error() // already worded for the end user
+		} else if errors.As(err, &hcErr) {
+			msg = hcErr.Error()
 		}
 		sendEvent("error", map[string]string{"message": msg})
 		return
 	}
-	shelfSpan.SetAttributes(attribute.Int("goodreads.book_count", len(books)))
+	shelfSpan.SetAttributes(attribute.Int("shelf.book_count", len(books)))
 	shelfSpan.End()
 
 	// Remember this search so the prewarm scheduler keeps its results warm for
@@ -235,7 +242,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		outcome = "ok"
 		sendEvent("done", map[string]interface{}{
 			"total":   0,
-			"message": "No books found — the shelf may be empty, or the Goodreads profile may be private (Settings → Privacy).",
+			"message": emptyShelfMessage(parsed.UserID),
 		})
 		return
 	}
@@ -487,4 +494,12 @@ func plural(singular, pluralForm string, n int) string {
 		return singular
 	}
 	return pluralForm
+}
+
+// emptyShelfMessage explains a zero-book result for the shelf's source.
+func emptyShelfMessage(userID string) string {
+	if services.IsHardcoverUser(userID) {
+		return "No books found — the shelf may be empty, or the Hardcover library may be private (Hardcover → Settings → Privacy)."
+	}
+	return "No books found — the shelf may be empty, or the Goodreads profile may be private (Settings → Privacy)."
 }

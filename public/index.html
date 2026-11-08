@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>benreadin — your to-read list, but borrowable</title>
-  <meta name="description" content="Paste a Goodreads shelf URL to check Libby/OverDrive availability and Amazon prices across multiple libraries.">
+  <meta name="description" content="Enter a Hardcover shelf to check Libby/OverDrive availability and Amazon prices across multiple libraries.">
   <meta property="og:title" content="benreadin — check your to-read list on Libby">
-  <meta property="og:description" content="Paste a Goodreads shelf. Find out what's available to borrow right now, what's on hold, and what's free in the public domain.">
+  <meta property="og:description" content="Enter your Hardcover shelf. Find out what's available to borrow right now, what's on hold, and what's free in the public domain.">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -53,55 +53,76 @@
     <section class="hero">
       <div class="container">
         <h1>Your to-read pile,<br>checked out of the library.</h1>
-        <p>Paste a Goodreads shelf. We'll tell you what's borrowable on Libby right now, what's on hold, and what's free in the public domain.</p>
+        <p>Enter your Hardcover shelf. We'll tell you what's borrowable on Libby right now, what's on hold, and what's free in the public domain.</p>
 
         <div class="search-card">
           <div id="error-banner" class="error-banner" role="alert" aria-live="assertive"></div>
 
           <form id="search-form" novalidate>
             <div class="form-group">
+              <span class="form-label" id="source-label">Where your books live</span>
+              <div class="source-picker" role="radiogroup" aria-labelledby="source-label">
+                <label class="source-option">
+                  <input type="radio" name="source" value="hardcover" checked>
+                  <span class="source-name">Hardcover</span>
+                </label>
+                <label class="source-option source-option--disabled" title="Goodreads shut off public shelf access in November 2026">
+                  <input type="radio" name="source" value="goodreads" disabled>
+                  <span class="source-name">Goodreads</span>
+                  <span class="source-tag">no longer works</span>
+                </label>
+                <label class="source-option source-option--disabled" title="StoryGraph has no public API yet">
+                  <input type="radio" name="source" value="storygraph" disabled>
+                  <span class="source-name">StoryGraph</span>
+                  <span class="source-tag">coming later</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-group">
               <label for="shelf-url">
-                Goodreads URL or user ID
-                <span class="label-hint">profile URL, shelf URL, or numeric ID</span>
+                Hardcover username
+                <span class="label-hint">@username or profile URL</span>
               </label>
               <input
                 type="text"
                 id="shelf-url"
                 name="url"
-                placeholder="https://www.goodreads.com/user/show/12345678-you"
+                placeholder="@you  or  hardcover.app/@you"
                 autocomplete="off"
+                autocapitalize="off"
                 spellcheck="false"
                 required
               >
               <div class="url-example">
-                <span class="url-example-label">e.g.</span>
-                <a href="#" class="url-example-link" id="example-shelf-btn">97106512-william</a>
+                <span class="url-example-label">Showing an example shelf —</span>
+                <button type="button" class="url-example-link url-finder-toggle" id="use-mine-btn">use yours</button>
                 <span class="url-example-label">·</span>
                 <button type="button" class="url-example-link url-finder-toggle" id="url-finder-toggle" aria-expanded="false" aria-controls="url-finder">
-                  don't know your URL?
+                  don't know your username?
                 </button>
               </div>
               <div class="url-finder" id="url-finder" hidden>
                 <ol class="url-finder-steps">
-                  <li>Sign in at <strong>goodreads.com</strong> (free to create an account).</li>
-                  <li>Click your profile picture in the top right, then <strong>Profile</strong>.</li>
-                  <li>Copy the page URL from your browser's address bar and paste it above.</li>
+                  <li>Sign in at <strong>hardcover.app</strong> (free).</li>
+                  <li>Coming from Goodreads? Export your library (Goodreads → My Books → Import and export), then import it in <strong>Hardcover → Settings → Import</strong>.</li>
+                  <li>Your username is in your profile URL: <code>hardcover.app/@<strong>you</strong></code>. Paste it above.</li>
                 </ol>
                 <div class="url-finder-actions">
-                  <a href="https://www.goodreads.com/user/sign_in" target="_blank" rel="noopener" class="btn-secondary btn-sm">Open Goodreads ↗</a>
-                  <span class="url-finder-note">Profile must be public: <strong>Settings → Privacy → "Anyone"</strong></span>
+                  <a href="https://hardcover.app/account/imports" target="_blank" rel="noopener" class="btn-secondary btn-sm">Import from Goodreads ↗</a>
+                  <span class="url-finder-note">Your library must be public on Hardcover.</span>
                 </div>
               </div>
             </div>
 
             <div class="form-group">
-              <label for="shelf-select">Shelf <span class="label-hint">which Goodreads shelf to check</span></label>
+              <label for="shelf-select">Shelf <span class="label-hint">which shelf to check</span></label>
               <div class="shelf-row">
                 <select id="shelf-select" class="filter-select">
                   <option value="to-read" selected>To Read</option>
                   <option value="currently-reading">Currently Reading</option>
                   <option value="read">Read</option>
-                  <option value="__custom__">Custom shelf…</option>
+                  <option value="did-not-finish">Did Not Finish</option>
                 </select>
                 <input
                   type="text"
@@ -156,7 +177,7 @@
           <div class="how-steps">
             <div class="how-step">
               <span class="how-step-num">1</span>
-              <span>Make your Goodreads profile public: <strong>Settings → Privacy → "Anyone"</strong>. Paste the profile URL above.</span>
+              <span>Track your books on <strong>Hardcover</strong> (import your Goodreads library in a few minutes) and make sure your library is public. Enter your <code style="font-size:.85em;color:var(--text-subtle);">@username</code> above.</span>
             </div>
             <div class="how-step">
               <span class="how-step-num">2</span>
@@ -174,7 +195,7 @@
 
   <footer class="site-footer">
     <div class="container">
-      <p>benreadin is not affiliated with Goodreads, Libby, OverDrive, or Amazon. Borrow data is live from OverDrive. As an Amazon Associate, benreadin may earn from qualifying purchases.</p>
+      <p>benreadin is not affiliated with Hardcover, Goodreads, Libby, OverDrive, or Amazon. Borrow data is live from OverDrive. As an Amazon Associate, benreadin may earn from qualifying purchases.</p>
       <div class="footer-reset">
         <button type="button" id="reset-data-btn" title="Clear this site's saved data if the page is misbehaving">Reset saved data</button>
       </div>

@@ -72,6 +72,13 @@ func main() {
 	cache := services.NewCacheService(database, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL, cfg.shelfTTL, cfg.recProfileTTL)
 
 	goodreadsSvc := services.NewGoodreadsService(cache)
+	hardcoverSvc := services.NewHardcoverService(cfg.hardcoverToken, cache)
+	if hardcoverSvc.Enabled() {
+		slog.Info("hardcover API enabled")
+	} else {
+		slog.Warn("hardcover API disabled (HARDCOVER_API_TOKEN unset) — Hardcover shelves will fail")
+	}
+	shelfSvc := &services.ShelfRouter{Goodreads: goodreadsSvc, Hardcover: hardcoverSvc}
 	overdriveSvc := services.NewOverDriveService(cache)
 	openLibrarySvc := services.NewOpenLibraryService()
 	gutenbergSvc := services.NewGutenbergService(database)
@@ -95,7 +102,7 @@ func main() {
 		slog.Info("amazon PA-API disabled (no credentials)")
 	}
 
-	recommendationSvc := services.NewRecommendationService(goodreadsSvc, overdriveSvc, openLibrarySvc, gutenbergSvc, amazonSvc, cache, cfg.recMax, cfg.recMaxAuthors, cfg.odConcurrency)
+	recommendationSvc := services.NewRecommendationService(shelfSvc, overdriveSvc, openLibrarySvc, gutenbergSvc, amazonSvc, cache, cfg.recMax, cfg.recMaxAuthors, cfg.odConcurrency)
 
 	// Background prewarm: periodically re-run seeded + recently used searches so
 	// the book cache is warm before returning users search again.
@@ -103,7 +110,7 @@ func main() {
 	defer prewarmCancel()
 	if cfg.prewarmEnabled {
 		prewarmSvc := services.NewPrewarmService(
-			goodreadsSvc,
+			shelfSvc,
 			overdriveSvc,
 			openLibrarySvc,
 			amazonSvc,
@@ -124,7 +131,7 @@ func main() {
 	}
 
 	searchHandler := handlers.NewSearchHandler(
-		goodreadsSvc,
+		shelfSvc,
 		overdriveSvc,
 		openLibrarySvc,
 		amazonSvc,
@@ -209,6 +216,7 @@ type config struct {
 	amazonTTL         int64
 	bookTTL           int64
 	shelfTTL          int64
+	hardcoverToken    string
 	odConcurrency     int64
 	odPerSearch       int64
 	azConcurrency     int64
@@ -238,6 +246,7 @@ func loadConfig() config {
 		odConcurrency:     envInt64("CONCURRENCY_OVERDRIVE", 50),
 		odPerSearch:       envInt64("CONCURRENCY_OVERDRIVE_PER_SEARCH", 16),
 		azConcurrency:     envInt64("CONCURRENCY_AMAZON", 3),
+		hardcoverToken:    os.Getenv("HARDCOVER_API_TOKEN"),
 		amazonAccessKey:   os.Getenv("AMAZON_ACCESS_KEY"),
 		amazonSecretKey:   os.Getenv("AMAZON_SECRET_KEY"),
 		amazonPartnerTag:  os.Getenv("AMAZON_PARTNER_TAG"),
@@ -252,7 +261,7 @@ func loadConfig() config {
 		prewarmActiveDays:  envInt64("PREWARM_ACTIVE_DAYS", 10),
 		// Format: "userID:shelf:lib1,lib2;userID2:shelf:lib3". Default keeps the
 		// site owner's to-read shelf warm at the Free Library of Philadelphia.
-		prewarmSeeds: envOrDefault("PREWARM_SEEDS", "97106512:to-read:freelibrary"),
+		prewarmSeeds: envOrDefault("PREWARM_SEEDS", "@wbollock:to-read:freelibrary"),
 	}
 }
 

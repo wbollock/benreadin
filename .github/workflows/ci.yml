@@ -11,13 +11,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-          cache: true
+      # Installs the Go and Node versions pinned in .mise.toml.
+      - uses: jdx/mise-action@v2
 
       - name: vet
         run: go vet ./...
+
+      - name: js syntax
+        run: mise run lint:js
 
       - name: test
         run: go test ./...

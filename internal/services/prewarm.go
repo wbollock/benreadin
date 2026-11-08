@@ -41,7 +41,7 @@ func LibrariesKey(libraries []string) string {
 // book_cache is already warm when a returning user searches again. Targets are
 // the configured seeds plus every search recorded within the active window.
 type PrewarmService struct {
-	goodreads   *GoodreadsService
+	shelves     ShelfFetcher
 	overdrive   *OverDriveService
 	openLibrary *OpenLibraryService
 	amazon      *AmazonService
@@ -58,7 +58,7 @@ type PrewarmService struct {
 }
 
 func NewPrewarmService(
-	gr *GoodreadsService,
+	gr ShelfFetcher,
 	od *OverDriveService,
 	ol *OpenLibraryService,
 	az *AmazonService,
@@ -69,7 +69,7 @@ func NewPrewarmService(
 	bookTTL int64,
 ) *PrewarmService {
 	return &PrewarmService{
-		goodreads:    gr,
+		shelves:      gr,
 		overdrive:    od,
 		openLibrary:  ol,
 		amazon:       az,
@@ -161,7 +161,7 @@ func (p *PrewarmService) runOnce(ctx context.Context) {
 // prewarmTarget refreshes the book cache for one shelf + library set and
 // returns (refreshed, stillFresh) book counts.
 func (p *PrewarmService) prewarmTarget(ctx context.Context, t PrewarmTarget) (int, int) {
-	books, err := p.goodreads.FetchShelf(ctx, t.UserID, t.Shelf, false)
+	books, err := p.shelves.FetchShelf(ctx, t.UserID, t.Shelf, false)
 	if err != nil {
 		slog.Warn("prewarm: shelf fetch failed", "user", t.UserID, "shelf", t.Shelf, "err", err)
 		return 0, 0

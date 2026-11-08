@@ -238,7 +238,8 @@ a:hover { text-decoration: underline; }
 .form-group { margin-bottom: 22px; }
 .form-group:last-of-type { margin-bottom: 0; }
 
-label {
+label,
+.form-label {
   display: block;
   font-size: .8rem;
   font-weight: 600;
@@ -338,6 +339,48 @@ input::placeholder { color: var(--text-subtle); }
   background: var(--surface-2);
 }
 .shelf-row input[type="text"] { flex: 1 1 auto; }
+
+/* Shelf source picker (Hardcover / Goodreads / StoryGraph) */
+.source-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.source-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.source-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.source-name { font-size: .9rem; font-weight: 600; color: var(--text); }
+.source-tag { font-size: .7rem; font-weight: 400; color: var(--text-subtle); }
+.source-option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.source-option:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--accent-glow); }
+.source-option--disabled { cursor: not-allowed; opacity: .5; }
+.source-option--disabled .source-name { text-decoration: line-through; text-decoration-color: var(--text-subtle); }
+@media (max-width: 480px) {
+  .source-option { padding: 8px 10px; }
+  .source-name { font-size: .82rem; }
+}
 
 /* Library chips */
 .library-input-wrap { position: relative; }

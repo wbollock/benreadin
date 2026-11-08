@@ -5,7 +5,11 @@
   const urlInput    = document.getElementById('shelf-url');
   const shelfSelect = document.getElementById('shelf-select');
   const shelfCustom = document.getElementById('shelf-custom');
-  const exampleBtn  = document.getElementById('example-shelf-btn');
+  const useMineBtn  = document.getElementById('use-mine-btn');
+
+  // The homepage defaults to the site owner's Hardcover shelf as a live
+  // example; "use yours" clears it for the visitor's own username.
+  const DEFAULT_SHELF = '@wbollock';
   const chipWrap   = document.getElementById('library-chips');
   const chipInput  = document.getElementById('library-input');
   const dropdown   = document.getElementById('autocomplete-list');
@@ -72,26 +76,49 @@
 
   function setShelfPicker(shelf) {
     if (!shelf) return;
+    // Hardcover has only the built-in statuses — a remembered Goodreads
+    // custom shelf falls back to the default.
     const standard = [...shelfSelect.options].some(o => o.value === shelf);
-    if (standard) {
-      shelfSelect.value = shelf;
-      shelfCustom.style.display = 'none';
-    } else {
-      shelfSelect.value = CUSTOM_SHELF;
-      shelfCustom.value = shelf;
-      shelfCustom.style.display = '';
-    }
+    shelfSelect.value = standard ? shelf : 'to-read';
+    shelfCustom.style.display = 'none';
   }
 
-  // ---- Example shelf link ----
-  if (exampleBtn) {
-    exampleBtn.addEventListener('click', e => {
-      e.preventDefault();
-      urlInput.value = '97106512-william';
+  // isHardcoverInput: only Hardcover works now, so remembered Goodreads /
+  // OverReader inputs from before Nov 2026 are not restored.
+  function isHardcoverInput(v) {
+    return /^@[\w.-]+$/.test(v) || /(^|\/\/)(www\.)?hardcover\.app\/@/.test(v);
+  }
+
+  // Accept a bare username too ("wbollock" → "@wbollock").
+  function normalizeInput(v) {
+    v = v.trim();
+    if (/^[\w.-]+$/.test(v) && !/^\d+(-|$)/.test(v)) return '@' + v;
+    return v;
+  }
+
+  function syncExampleHint() {
+    const hint = useMineBtn && useMineBtn.parentElement.querySelector('.url-example-label');
+    if (!hint) return;
+    const isExample = urlInput.value.trim() === DEFAULT_SHELF;
+    hint.style.display = isExample ? '' : 'none';
+    useMineBtn.style.display = isExample ? '' : 'none';
+    useMineBtn.nextElementSibling.style.display = isExample ? '' : 'none';
+  }
+
+  if (useMineBtn) {
+    useMineBtn.addEventListener('click', () => {
+      urlInput.value = '@';
       urlInput.focus();
+      urlInput.setSelectionRange(1, 1);
       clearError();
+      syncExampleHint();
     });
   }
+  // Clicking into the untouched example selects it so typing replaces it.
+  urlInput.addEventListener('focus', () => {
+    if (urlInput.value.trim() === DEFAULT_SHELF) urlInput.select();
+  });
+  urlInput.addEventListener('input', syncExampleHint);
 
   // ---- "Don't know your URL?" finder ----
   const urlFinderToggle = document.getElementById('url-finder-toggle');
@@ -101,7 +128,7 @@
       const open = urlFinder.hidden;
       urlFinder.hidden = !open;
       urlFinderToggle.setAttribute('aria-expanded', String(open));
-      urlFinderToggle.textContent = open ? 'hide' : "don't know your URL?";
+      urlFinderToggle.textContent = open ? 'hide' : "don't know your username?";
     });
   }
 
@@ -387,8 +414,9 @@
     e.preventDefault();
     clearError();
 
-    const url = urlInput.value.trim();
-    if (!url) { showError('Please enter a Goodreads or OverReader shelf URL.'); return; }
+    const url = normalizeInput(urlInput.value);
+    if (!url || url === '@') { showError('Enter your Hardcover username, e.g. @you or hardcover.app/@you.'); return; }
+    urlInput.value = url;
     if (libraries.length === 0) { showError('Add at least one library to check.'); return; }
 
     const shelf = currentShelf();
@@ -419,9 +447,11 @@
   // silently swallow the ReferenceError and restore nothing.
   const lastSearch = loadLastSearch();
   const rememberedUser = getCookie(USER_COOKIE);
-  if (lastSearch && lastSearch.url) urlInput.value = lastSearch.url;
-  else if (rememberedUser) urlInput.value = rememberedUser;
-  if (lastSearch && lastSearch.shelf) setShelfPicker(lastSearch.shelf);
+  if (lastSearch && lastSearch.url && isHardcoverInput(lastSearch.url)) urlInput.value = lastSearch.url;
+  else if (rememberedUser && isHardcoverInput(rememberedUser)) urlInput.value = rememberedUser;
+  else urlInput.value = DEFAULT_SHELF;
+  if (lastSearch && lastSearch.shelf && isHardcoverInput(urlInput.value)) setShelfPicker(lastSearch.shelf);
+  syncExampleHint();
 
   const cookieLibs = loadLastLibsCookie();
   const restoredLibs = (lastSearch && Array.isArray(lastSearch.libs) && lastSearch.libs.length)
