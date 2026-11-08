@@ -16,8 +16,14 @@ import (
 	"github.com/wbollock/benreadin/internal/metrics"
 	"github.com/wbollock/benreadin/internal/models"
 	"github.com/wbollock/benreadin/internal/services"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/semaphore"
 )
+
+var tracer = otel.Tracer("benreadin/search")
 
 // ssePadding is a high-entropy comment payload sent on connect so the stream
 // crosses Firefox's ~1KB threshold for dispatching the first EventSource events,
@@ -198,8 +204,16 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	sendEvent("progress", ProgressEvent{Message: "Fetching your Goodreads shelf..."})
 
 	// Fetch books from Goodreads
-	books, err := h.goodreads.FetchShelf(ctx, parsed.UserID, parsed.Shelf, r.URL.Query().Get("refresh") == "true")
+	shelfCtx, shelfSpan := tracer.Start(ctx, "goodreads.fetch_shelf")
+	shelfSpan.SetAttributes(
+		attribute.String("goodreads.user_id", parsed.UserID),
+		attribute.String("goodreads.shelf", parsed.Shelf),
+	)
+	books, err := h.goodreads.FetchShelf(shelfCtx, parsed.UserID, parsed.Shelf, r.URL.Query().Get("refresh") == "true")
 	if err != nil {
+		shelfSpan.RecordError(err)
+		shelfSpan.SetStatus(codes.Error, err.Error())
+		shelfSpan.End()
 		msg := fmt.Sprintf("Failed to fetch Goodreads shelf: %s", err)
 		var statusErr *services.GoodreadsStatusError
 		if errors.As(err, &statusErr) {
@@ -208,6 +222,8 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		sendEvent("error", map[string]string{"message": msg})
 		return
 	}
+	shelfSpan.SetAttributes(attribute.Int("goodreads.book_count", len(books)))
+	shelfSpan.End()
 
 	// Remember this search so the prewarm scheduler keeps its results warm for
 	// returning users.
@@ -317,9 +333,14 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		go func() {
 			defer fullWg.Done()
 
-			bookCtx, bookCancel := context.WithTimeout(ctx, 30*time.Second)
-			defer bookCancel()
+			spanCtx, bookSpan := tracer.Start(ctx, "book.process", trace.WithAttributes(
+				attribute.String("book.goodreads_id", book.GoodreadsID),
+				attribute.String("book.title", book.Title),
+			))
+			defer bookSpan.End()
 
+			bookCtx, bookCancel := context.WithTimeout(spanCtx, 30*time.Second)
+			defer bookCancel()
 			// OD availability checks use whatever ISBN Goodreads provided
 			// (or title+author fallback).
 			libResults := make([]models.LibraryResult, len(libraries))
@@ -352,6 +373,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 			libWg.Wait()
 
 			book.Genre = models.GenreFromResults(libResults)
+			bookSpan.SetAttributes(attribute.String("book.genre", string(book.Genre)))
 			// Goodreads only supplies Description when the user wrote a
 			// review of the book — rare, especially on a to-read shelf.
 			// Fall back to the OverDrive catalog blurb so most books get one.
@@ -373,7 +395,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 			// shelves, so this gets its own generous timeout independent of the
 			// 30s availability budget — under the old shared budget the tail of
 			// a big shelf timed out before ever reaching the Amazon semaphore.
-			enrichCtx, enrichCancel := context.WithTimeout(ctx, 3*time.Minute)
+			enrichCtx, enrichCancel := context.WithTimeout(spanCtx, 3*time.Minute)
 			defer enrichCancel()
 
 			enriched := h.openLibrary.Enrich(enrichCtx, []models.Book{book})[0]
@@ -385,6 +407,7 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					metrics.UpstreamErrorsTotal.WithLabelValues("amazon").Inc()
 					slog.Warn("amazon prices failed", "book", enriched.Title, "err", err)
+					bookSpan.RecordError(err)
 				}
 			}
 

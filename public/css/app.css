@@ -1181,30 +1181,34 @@ input::placeholder { color: var(--text-subtle); }
 .results-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
   align-items: center;
-  padding: 8px 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border-soft);
   margin-bottom: 16px;
   font-size: .75rem;
   color: var(--text-muted);
 }
-.results-legend strong {
+.legend-label {
   font-weight: 700;
   color: var(--text-subtle);
   text-transform: uppercase;
   font-size: .68rem;
   letter-spacing: .05em;
-  margin-right: 3px;
+  margin-right: 10px;
 }
+/* Each item is a "sample badge, then what it means" pair; a right border
+   (not a glyph separator, which read as visual noise next to the badges'
+   own colored backgrounds) divides items instead of relying on gap alone. */
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   white-space: nowrap;
+  padding: 2px 12px;
+  border-right: 1px solid var(--border-soft);
 }
+.legend-item:last-child { border-right: none; padding-right: 0; }
+.legend-desc { color: var(--text-subtle); }
 
 /* ================================================================
    RENAME MODAL

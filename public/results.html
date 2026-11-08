@@ -81,7 +81,7 @@
           <h2>Results <span class="results-count" id="results-count"></span></h2>
           <div class="results-header-actions">
             <div id="kindle-report-trigger" style="display:none;">
-              <button id="kindle-report-btn" class="btn-secondary btn-sm" type="button">Kindle gaps report</button>
+              <button id="kindle-report-btn" class="btn-secondary btn-sm" type="button">Missing on Kindle list</button>
             </div>
             <div id="recs-trigger" style="display:none;">
               <button id="recs-btn" class="btn-recs">Recommend me more books ↓</button>
@@ -91,12 +91,12 @@
 
         <!-- Legend -->
         <div class="results-legend">
-          <strong>Key:</strong>
-          <span class="legend-item"><span class="badge badge-available">Available</span> — borrow now</span>
-          <span class="legend-item"><span class="badge badge-wait">N-day wait</span> — place a hold</span>
-          <span class="legend-item"><span class="badge badge-notfound">Not found</span> — not on Libby</span>
-          <span class="legend-item"><span class="badge-kindle-pill">K</span> — Kindle delivery</span>
-          <span class="legend-item"><span class="badge" style="background:var(--green-bg);color:var(--green);">Free · Gutenberg</span> — free EPUB</span>
+          <span class="legend-label">Key</span>
+          <span class="legend-item"><span class="badge badge-available">Available</span><span class="legend-desc">borrow now</span></span>
+          <span class="legend-item"><span class="badge badge-wait">N-day wait</span><span class="legend-desc">place a hold</span></span>
+          <span class="legend-item"><span class="badge badge-notfound">Not found</span><span class="legend-desc">not on Libby</span></span>
+          <span class="legend-item"><span class="badge-kindle-pill">K</span><span class="legend-desc">Kindle delivery</span></span>
+          <span class="legend-item"><span class="badge" style="background:var(--green-bg);color:var(--green);">Gutenberg</span><span class="legend-desc">free EPUB</span></span>
         </div>
 
         <div class="filter-bar">
@@ -179,11 +179,11 @@
         <div class="recs-grid book-grid" id="recs-grid"></div>
       </div>
 
-      <!-- Kindle gaps report: books that are in the catalog somewhere but never
-           carry a Kindle format at any checked library. -->
+      <!-- Missing on Kindle list: books that are in the catalog somewhere but
+           never carry a Kindle format at any checked library. -->
       <div id="kindle-report-panel" class="recs-panel" style="display:none;">
         <div class="recs-header">
-          <h2 class="recs-title">Never available on Kindle</h2>
+          <h2 class="recs-title">Missing on Kindle list</h2>
           <button class="recs-toggle" id="kindle-report-toggle" aria-expanded="true">Hide</button>
         </div>
         <p class="recs-subtitle" id="kindle-report-subtitle">Books your libraries carry (or have on hold) but never offer as a Kindle format.</p>

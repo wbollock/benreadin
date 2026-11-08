@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/wbollock/benreadin/internal/models"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 const (
@@ -35,7 +36,7 @@ func (g *GutenbergService) CatalogLoaded() bool { return g.catalogLoaded }
 func NewGutenbergService(db *sql.DB) *GutenbergService {
 	return &GutenbergService{
 		db:     db,
-		client: &http.Client{Timeout: 60 * time.Second},
+		client: &http.Client{Timeout: 60 * time.Second, Transport: otelhttp.NewTransport(http.DefaultTransport)},
 	}
 }
 

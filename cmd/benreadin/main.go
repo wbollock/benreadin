@@ -21,6 +21,7 @@ import (
 	"github.com/wbollock/benreadin/internal/handlers"
 	appmw "github.com/wbollock/benreadin/internal/middleware"
 	"github.com/wbollock/benreadin/internal/services"
+	"github.com/wbollock/benreadin/internal/telemetry"
 )
 
 // version is set at build time via -ldflags "-X main.version=<git-sha>".
@@ -37,6 +38,22 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})))
+
+	otelShutdown, err := telemetry.Setup(context.Background(), "benreadin", version)
+	if err != nil {
+		// Amazon-style graceful degradation: tracing is never a hard
+		// dependency, so log and keep running rather than exiting.
+		slog.Warn("telemetry setup incomplete", "err", err)
+	}
+	if otelShutdown != nil {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := otelShutdown(ctx); err != nil {
+				slog.Warn("telemetry shutdown error", "err", err)
+			}
+		}()
+	}
 
 	database, err := db.Open(cfg.dbPath, cfg.libraryTTL, cfg.amazonTTL, cfg.bookTTL, cfg.shelfTTL, cfg.recProfileTTL)
 	if err != nil {
@@ -125,6 +142,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
+	r.Use(appmw.Tracing)
 	r.Use(chimw.Recoverer)
 	r.Use(appmw.Logger)
 	r.Use(appmw.Security)

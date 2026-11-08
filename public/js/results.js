@@ -847,10 +847,10 @@
     recsGrid.style.display = expanded ? 'none' : '';
   });
 
-  // ---- Kindle gaps report ----
+  // ---- Missing on Kindle list ----
   // Client-side only: no new data is needed, library_results.has_kindle is
-  // already on every book event. "Never available on Kindle" means found in
-  // at least one library's catalog (status !== 'not_found') but none of those
+  // already on every book event. "Missing on Kindle" means found in at
+  // least one library's catalog (status !== 'not_found') but none of those
   // findings carry a Kindle format.
 
   if (kindleReportBtn) {
@@ -859,7 +859,7 @@
 
       kindleReportGrid.innerHTML = gaps.length
         ? gaps.map(event => buildBookCard(event, true)).join('')
-        : '<p style="color:var(--text-muted);font-size:.875rem;padding:8px 0;">No gaps found — every book your libraries carry also offers a Kindle format.</p>';
+        : '<p style="color:var(--text-muted);font-size:.875rem;padding:8px 0;">Nothing missing — every book your libraries carry also offers a Kindle format.</p>';
       kindleReportSubtitle.textContent = gaps.length
         ? `${gaps.length} of ${allBooks.length} book${gaps.length === 1 ? '' : 's'} your libraries carry (or have on hold) never offer a Kindle format.`
         : 'Books your libraries carry (or have on hold) but never offer as a Kindle format.';
