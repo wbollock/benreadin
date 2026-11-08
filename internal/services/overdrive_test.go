@@ -28,3 +28,23 @@ func TestTitlesMatch(t *testing.T) {
 		}
 	}
 }
+
+func TestEnglishOnly(t *testing.T) {
+	mk := func(title string, langs ...string) thunderItem {
+		it := thunderItem{Title: title}
+		for _, l := range langs {
+			it.Languages = append(it.Languages, struct {
+				ID string `json:"id"`
+			}{l})
+		}
+		return it
+	}
+	got := englishOnly([]thunderItem{mk("Carl", "en"), mk("El portal", "es"), mk("Untagged"), mk("Bilingual", "es", "EN")})
+	var titles []string
+	for _, it := range got {
+		titles = append(titles, it.Title)
+	}
+	if len(titles) != 3 || titles[0] != "Carl" || titles[1] != "Untagged" || titles[2] != "Bilingual" {
+		t.Fatalf("englishOnly kept %v", titles)
+	}
+}

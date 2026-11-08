@@ -219,3 +219,21 @@ func TestAnyAvailableKindle(t *testing.T) {
 		t.Error("expected anyAvailableKindle(no) = false")
 	}
 }
+
+func TestBuildRecProfileStructuredSeries(t *testing.T) {
+	// Hardcover books: no title annotation, series in structured fields.
+	read := []models.Book{
+		{Title: "The Way of Kings", SeriesName: "The Stormlight Archive", SeriesPosition: 1, UserRating: 5},
+		{Title: "Words of Radiance", SeriesName: "The Stormlight Archive", SeriesPosition: 2},
+	}
+	want := []models.Book{
+		{Title: "Rhythm of War", SeriesName: "The Stormlight Archive", SeriesPosition: 4},
+	}
+	profile := buildRecProfile(read, want)
+	if len(profile.Series) != 1 || profile.Series[0].Name != "The Stormlight Archive" {
+		t.Fatalf("series = %+v", profile.Series)
+	}
+	if next, ok := profile.Series[0].NextUnread(); !ok || next != 3 {
+		t.Errorf("NextUnread() = (%d, %v), want (3, true)", next, ok)
+	}
+}

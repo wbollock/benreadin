@@ -64,6 +64,9 @@ type thunderItem struct {
 			Href string `json:"href"`
 		} `json:"cover300Wide"`
 	} `json:"covers"`
+	Languages []struct {
+		ID string `json:"id"` // ISO 639-1, e.g. "en", "es"
+	} `json:"languages"`
 	Formats []struct {
 		ID   string `json:"id"`   // e.g. "ebook-kindle", "ebook-overdrive", "ebook-epub-adobe"
 		ISBN string `json:"isbn"` // present on ebook-overdrive/epub-adobe formats, not kindle
@@ -138,7 +141,7 @@ func (s *OverDriveService) CheckAvailability(ctx context.Context, book models.Bo
 	// Build query: prefer ISBN, fall back to title+author
 	query := book.BestISBN()
 	if query == "" {
-		query = fmt.Sprintf("%s %s", book.SearchTitle(), book.Author)
+		query = titleAuthorQuery(book)
 	}
 
 	// Check cache
@@ -177,7 +180,7 @@ func (s *OverDriveService) checkUncached(ctx context.Context, book models.Book, 
 	if resp.TotalItems == 0 || len(resp.Items) == 0 {
 		// If ISBN search returned nothing, try title+author
 		if byISBN {
-			fallback := fmt.Sprintf("%s %s", book.SearchTitle(), book.Author)
+			fallback := titleAuthorQuery(book)
 			resp, err = s.fetchThunder(ctx, libraryKey, fallback)
 			if err != nil {
 				return result, err
@@ -262,7 +265,7 @@ func (s *OverDriveService) SearchMedia(ctx context.Context, libraryKey, query st
 	if hit, err := s.cache.GetLibrary(libraryKey, cacheKey, &cached); err != nil {
 		slog.Warn("cache read error", "err", err)
 	} else if hit {
-		return cached, nil
+		return englishOnly(cached), nil
 	}
 
 	v, err, _ := s.flight.Do(libraryKey+"|"+cacheKey, func() (interface{}, error) {
@@ -279,7 +282,29 @@ func (s *OverDriveService) SearchMedia(ctx context.Context, libraryKey, query st
 		metrics.UpstreamErrorsTotal.WithLabelValues("overdrive").Inc()
 		return nil, err
 	}
-	return v.([]thunderItem), nil
+	return englishOnly(v.([]thunderItem)), nil
+}
+
+// englishOnly drops catalog items not tagged English. Recommendation series
+// and author searches otherwise surface translations (Spanish Dungeon Crawler
+// Carl shares the English series name and reading order). Untagged items are
+// kept. The UI and Amazon marketplace are English-only, so this is not
+// configurable yet.
+func englishOnly(items []thunderItem) []thunderItem {
+	out := items[:0:0]
+	for _, it := range items {
+		keep := len(it.Languages) == 0
+		for _, l := range it.Languages {
+			if strings.EqualFold(l.ID, "en") {
+				keep = true
+				break
+			}
+		}
+		if keep {
+			out = append(out, it)
+		}
+	}
+	return out
 }
 
 // libraryResultFromThunderItem builds a LibraryResult from a raw Thunder item
@@ -328,6 +353,14 @@ func titlesMatch(got, want string) bool {
 		}
 	}
 	return false
+}
+
+// titleAuthorQuery is the Thunder text query for a book without a usable
+// ISBN match. Subtitles are dropped: Hardcover titles usually carry the full
+// subtitle ("Ghost in the Wires: My Adventures as…"), which only adds noise to
+// relevance ranking — titlesMatch compares main titles anyway.
+func titleAuthorQuery(book models.Book) string {
+	return strings.TrimSpace(stripSubtitle(book.SearchTitle()) + " " + book.Author)
 }
 
 // stripSubtitle drops everything after the first colon.

@@ -62,6 +62,9 @@ function availabilityBadge(result) {
     case 'unavailable':
       return `<span class="badge badge-unavail">Not in catalog</span>`;
     default:
+      if (result.check_failed) {
+        return `<span class="badge badge-notfound" title="Libby didn't respond in time — use Refresh to try again">Couldn't check</span>`;
+      }
       return `<span class="badge badge-notfound">Not found</span>`;
   }
 }

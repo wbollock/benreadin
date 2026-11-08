@@ -54,7 +54,8 @@ const hcFixture = `{"data":{"users":[{"id":1}],"user_books":[
   "edition":{"isbn_10":"0316037702","isbn_13":"9780316037709","pages":413,"image":{"url":"https://assets.hardcover.app/e.jpeg"}},
   "book":{"id":386744,"slug":"ghost-in-the-wires","title":"Ghost in the Wires","description":"<p>A <b>hacker</b> memoir.</p>",
    "pages":400,"rating":3.987654,"ratings_count":10,"image":{"url":"https://assets.hardcover.app/b.jpeg"},
-   "contributions":[{"contribution":"Foreword","author":{"name":"Steve Wozniak"}},{"contribution":null,"author":{"name":"Kevin   Mitnick"}}]}},
+   "contributions":[{"contribution":"Foreword","author":{"name":"Steve Wozniak"}},{"contribution":null,"author":{"name":"Kevin   Mitnick"}}],
+   "book_series":[{"position":2.5,"featured":true,"series":{"name":"Novellas"}},{"position":2,"featured":false,"series":{"name":"Hacker Memoirs"}}]}},
  {"date_added":null,"rating":null,"edition":null,
   "book":{"id":2,"slug":"","title":"No Edition","description":null,"pages":0,"rating":0,"ratings_count":0,"image":{"url":"https://assets.hardcover.app/2.jpeg"},
    "contributions":[{"contribution":"Translator","author":{"name":"T. Ranslator"}}]}},
@@ -111,6 +112,9 @@ func TestHardcoverFetchShelf(t *testing.T) {
 	}
 	if b.Description != "A hacker memoir." || b.AverageRating != 3.99 || b.UserRating != 5 || b.DateAddedUnix == 0 {
 		t.Errorf("misc fields: %+v", b)
+	}
+	if b.SeriesName != "Hacker Memoirs" || b.SeriesPosition != 2 {
+		t.Errorf("series = (%q, %d), want first whole-number position", b.SeriesName, b.SeriesPosition)
 	}
 	nb := books[1]
 	if nb.Author != "T. Ranslator" || nb.CoverURL != "https://assets.hardcover.app/2.jpeg" || nb.BookURL != "" || nb.UserRating != 0 {

@@ -155,8 +155,13 @@ func buildRecProfile(read, want []models.Book) *RecProfile {
 			excluded = append(excluded, k)
 		}
 	}
-	trackSeries := func(title string, isRead bool, lowRated bool) {
-		name, first, last, ok := parseSeriesAnnotation(title)
+	trackSeries := func(b models.Book, isRead bool, lowRated bool) {
+		// Structured series data (Hardcover) wins; Goodreads titles carry
+		// it as a trailing "(Series, #N)" annotation.
+		name, first, last, ok := b.SeriesName, b.SeriesPosition, b.SeriesPosition, b.SeriesName != "" && b.SeriesPosition > 0
+		if !ok {
+			name, first, last, ok = parseSeriesAnnotation(b.Title)
+		}
 		if !ok {
 			return
 		}
@@ -180,7 +185,7 @@ func buildRecProfile(read, want []models.Book) *RecProfile {
 	for _, b := range read {
 		exclude(b.Title)
 		lowRated := b.UserRating >= 1 && b.UserRating <= 2
-		trackSeries(b.Title, true, lowRated)
+		trackSeries(b, true, lowRated)
 
 		author := normalizeAuthorName(b.Author)
 		if author == "" {
@@ -204,7 +209,7 @@ func buildRecProfile(read, want []models.Book) *RecProfile {
 	}
 	for _, b := range want {
 		exclude(b.Title)
-		trackSeries(b.Title, false, false)
+		trackSeries(b, false, false)
 	}
 
 	p := &RecProfile{Excluded: excluded}

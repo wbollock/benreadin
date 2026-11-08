@@ -22,6 +22,11 @@ type LibraryResult struct {
 	OverDriveURL    string             `json:"overdrive_url,omitempty"`
 	HasKindle       bool               `json:"has_kindle,omitempty"` // true if the Libby/OverDrive title includes a Kindle delivery format
 
+	// CheckFailed marks a result whose OverDrive lookup errored or timed out:
+	// Status is StatusNotFound only as a placeholder. Events containing one are
+	// never written to book_cache, so the next search or prewarm retries.
+	CheckFailed bool `json:"check_failed,omitempty"`
+
 	// Genre is the OverDrive subject-derived fiction/nonfiction classification
 	// for the catalog entry that matched. Carried here (rather than looked up
 	// separately) because it comes free with the availability check; rolled up
@@ -65,4 +70,14 @@ type Library struct {
 	Key     string `json:"key"`
 	Name    string `json:"name"`
 	Website string `json:"website"`
+}
+
+// AnyCheckFailed reports whether any per-library lookup failed.
+func AnyCheckFailed(results []LibraryResult) bool {
+	for _, r := range results {
+		if r.CheckFailed {
+			return true
+		}
+	}
+	return false
 }

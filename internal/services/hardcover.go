@@ -209,6 +209,7 @@ const hardcoverShelfQuery = `query Shelf($u: citext!, $s: Int!, $l: Int!, $o: In
       id slug title description pages rating ratings_count
       image { url }
       contributions { contribution author { name } }
+      book_series(order_by: {featured: desc}) { position featured series { name } }
     }
   }
 }`
@@ -241,6 +242,13 @@ type hcUserBook struct {
 				Name string `json:"name"`
 			} `json:"author"`
 		} `json:"contributions"`
+		BookSeries []struct {
+			Position *float64 `json:"position"`
+			Featured bool     `json:"featured"`
+			Series   *struct {
+				Name string `json:"name"`
+			} `json:"series"`
+		} `json:"book_series"`
 	} `json:"book"`
 }
 
@@ -405,7 +413,27 @@ func hardcoverToBook(ub hcUserBook) models.Book {
 	if t, err := time.Parse("2006-01-02", strings.TrimSpace(ub.DateAdded)); err == nil {
 		b.DateAddedUnix = t.Unix()
 	}
+	b.SeriesName, b.SeriesPosition = hardcoverSeries(ub)
 	return b
+}
+
+// hardcoverSeries picks the book's main series entry for the "next in series"
+// recommendations: the featured series (e.g. Stormlight Archive rather than
+// the Cosmere umbrella) when it has a whole-number position, else the first
+// series that does. Novellas at fractional positions (2.5) and unnumbered
+// collections are skipped — there's no "next" entry to recommend.
+func hardcoverSeries(ub hcUserBook) (string, int) {
+	for _, s := range ub.Book.BookSeries { // ordered featured-first
+		if s.Series == nil || s.Position == nil {
+			continue
+		}
+		p := *s.Position
+		name := strings.TrimSpace(s.Series.Name)
+		if name != "" && p >= 1 && p == math.Trunc(p) {
+			return name, int(p)
+		}
+	}
+	return "", 0
 }
 
 // ShelfFetcher fetches a shelf's books. userID is either a numeric Goodreads

@@ -233,7 +233,7 @@ func (p *PrewarmService) prewarmBook(ctx context.Context, book models.Book, libr
 	libResults := make([]models.LibraryResult, len(libraries))
 	var libWg sync.WaitGroup
 	for i, lib := range libraries {
-		libResults[i] = models.LibraryResult{LibraryKey: lib, Status: models.StatusNotFound}
+		libResults[i] = models.LibraryResult{LibraryKey: lib, Status: models.StatusNotFound, CheckFailed: true}
 		libWg.Add(1)
 		go func(i int, lib string) {
 			defer libWg.Done()
@@ -266,7 +266,7 @@ func (p *PrewarmService) prewarmBook(ctx context.Context, book models.Book, libr
 		}
 	}
 
-	if bookCtx.Err() != nil {
+	if bookCtx.Err() != nil || models.AnyCheckFailed(libResults) {
 		return false // partial results — don't poison the cache
 	}
 

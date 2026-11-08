@@ -12,6 +12,11 @@ type Book struct {
 	GoodreadsID   string  `json:"goodreads_id"`
 	Source        string  `json:"source,omitempty"`   // "hardcover" | "" (Goodreads)
 	BookURL       string  `json:"book_url,omitempty"` // source book page; empty → derive Goodreads URL
+	// SeriesName/SeriesPosition come from structured source data (Hardcover).
+	// Goodreads books leave them empty; their series lives in the title's
+	// "(Series, #N)" annotation instead.
+	SeriesName     string `json:"series_name,omitempty"`
+	SeriesPosition int    `json:"series_position,omitempty"`
 	Title         string  `json:"title"`
 	Author        string  `json:"author"`
 	ISBN10        string  `json:"isbn10"`

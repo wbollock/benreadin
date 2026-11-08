@@ -346,13 +346,15 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 			))
 			defer bookSpan.End()
 
-			bookCtx, bookCancel := context.WithTimeout(spanCtx, 30*time.Second)
-			defer bookCancel()
-			// OD availability checks use whatever ISBN Goodreads provided
-			// (or title+author fallback).
+			// OD availability checks use whatever ISBN the shelf provided
+			// (or title+author fallback). Queueing for the semaphores is
+			// bounded only by the request context (client disconnect): a
+			// fixed per-book budget that included queue time made the tail of
+			// a large uncached shelf time out before reaching OverDrive. Each
+			// call gets its own timeout once it holds a slot.
 			libResults := make([]models.LibraryResult, len(libraries))
 			for i := range libResults {
-				libResults[i] = models.LibraryResult{LibraryKey: libraries[i], Status: models.StatusNotFound}
+				libResults[i] = models.LibraryResult{LibraryKey: libraries[i], Status: models.StatusNotFound, CheckFailed: true}
 			}
 			var libWg sync.WaitGroup
 			for i, lib := range libraries {
@@ -361,18 +363,20 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 				libWg.Add(1)
 				go func() {
 					defer libWg.Done()
-					if err := searchSem.Acquire(bookCtx, 1); err != nil {
+					if err := searchSem.Acquire(spanCtx, 1); err != nil {
 						return
 					}
 					defer searchSem.Release(1)
-					if err := h.odSem.Acquire(bookCtx, 1); err != nil {
+					if err := h.odSem.Acquire(spanCtx, 1); err != nil {
 						return
 					}
 					defer h.odSem.Release(1)
-					lr, err := h.overdrive.CheckAvailability(bookCtx, book, lib)
+					callCtx, callCancel := context.WithTimeout(spanCtx, odCallTimeout)
+					defer callCancel()
+					lr, err := h.overdrive.CheckAvailability(callCtx, book, lib)
 					if err != nil {
 						slog.Warn("overdrive check failed", "book", book.Title, "library", lib, "err", err)
-						lr = models.LibraryResult{LibraryKey: lib, Status: models.StatusNotFound}
+						return // placeholder stays CheckFailed
 					}
 					libResults[i] = lr
 				}()
@@ -425,7 +429,9 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 				GutenbergResult: gbResult,
 			}
 
-			if enrichCtx.Err() == nil && enriched.GoodreadsID != "" {
+			// Never cache a failed lookup: it would show "not found" for the
+			// whole book TTL instead of being retried on the next search.
+			if enrichCtx.Err() == nil && enriched.GoodreadsID != "" && !models.AnyCheckFailed(libResults) {
 				if err := h.cache.SetBook(enriched.GoodreadsID, libsKey, full); err != nil {
 					slog.Warn("book cache set failed", "book", enriched.Title, "err", err)
 				}
@@ -488,6 +494,10 @@ func (h *SearchHandler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		"message": fmt.Sprintf("Done — checked %d books", len(books)),
 	})
 }
+
+// odCallTimeout bounds one OverDrive availability call (which may include a
+// title+author fallback query) once it holds a concurrency slot.
+const odCallTimeout = 20 * time.Second
 
 func plural(singular, pluralForm string, n int) string {
 	if n == 1 {
